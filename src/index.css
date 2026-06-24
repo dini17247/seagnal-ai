@@ -1,0 +1,290 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;850;900&family=JetBrains+Mono:wght@400;500;700;800&display=swap');
+@import "tailwindcss";
+
+@variant dark (.dark &);
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-slate-950: #050B1A;
+  --color-slate-900: #0A1128;
+  --color-slate-850: #0E1A34;
+  --color-slate-800: #1E293B;
+  --color-slate-750: #020610;
+}
+
+/* Scrollbar styling for high-fidelity marine terminals */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #050B1A;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #1E293B;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(6, 182, 212, 0.5);
+}
+
+/* Custom Overrides for Leaflet tactical map */
+
+.leaflet-container {
+  font-family: var(--font-sans) !important;
+  background: #0E1A34 !important;
+}
+
+.leaflet-bar {
+  border: 1px solid rgba(51, 65, 85, 0.5) !important;
+  box-shadow: 0 4px 12px rgba(2, 6, 23, 0.5) !important;
+  border-radius: 6px !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background-color: rgb(15, 23, 42) !important;
+  color: rgb(148, 163, 184) !important;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.5) !important;
+  transition: all 150ms ease-in-out;
+}
+
+.leaflet-bar a:hover {
+  background-color: rgb(30, 41, 59) !important;
+  color: rgb(34, 211, 238) !important;
+}
+
+/* Custom Tactical Popups */
+.custom-tactical-popup .leaflet-popup-content-wrapper {
+  background: rgba(2, 6, 23, 0.95) !important;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(51, 65, 85, 0.8) !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.7), 0 8px 10px -6px rgba(0, 0, 0, 0.7) !important;
+  border-radius: 10px !important;
+  padding: 0 !important;
+  color: rgb(241, 245, 249) !important;
+}
+
+.custom-tactical-popup .leaflet-popup-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  width: 256px !important;
+}
+
+.custom-tactical-popup .leaflet-popup-tip {
+  background: rgba(2, 6, 23, 0.95) !important;
+  border-left: 1px solid rgba(51, 65, 85, 0.8);
+  border-bottom: 1px solid rgba(51, 65, 85, 0.8);
+  box-shadow: none !important;
+}
+
+.custom-tactical-popup .leaflet-popup-close-button {
+  top: 10px !important;
+  right: 10px !important;
+  color: rgb(148, 163, 184) !important;
+  font-size: 14px !important;
+  transition: all 150ms;
+}
+
+.custom-tactical-popup .leaflet-popup-close-button:hover {
+  color: rgb(244, 63, 94) !important;
+}
+
+/* Marker rotation transitions */
+.custom-vessel-marker {
+  transition: transform 0.25s cubic-bezier(0.1, 0.8, 0.3, 1), opacity 0.2s;
+}
+
+/* Active alert pulse animation for high tactical visibility */
+@keyframes active-alert-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.8), 0 0 0 0 rgba(244, 63, 94, 0.5);
+    transform: scale(0.95);
+  }
+  50% {
+    box-shadow: 0 0 0 16px rgba(239, 68, 68, 0), 0 0 0 26px rgba(244, 63, 94, 0);
+    transform: scale(1.15);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0), 0 0 0 0 rgba(244, 63, 94, 0);
+    transform: scale(0.95);
+  }
+}
+
+.marker-alert-active {
+  animation: active-alert-pulse 1.6s infinite ease-out;
+  border-radius: 50%;
+}
+
+/* Geofence hover tooltips */
+.leaflet-tooltip-pane .bg-transparent {
+  padding: 0 !important;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Light mode overrides */
+.light-mode {
+  --color-slate-950: #F1F5F9;
+  --color-slate-900: #FFFFFF;
+  --color-slate-850: #E2E8F0;
+  --color-slate-800: #CBD5E1;
+  --color-slate-750: #E2E8F0;
+
+  color-scheme: light;
+}
+
+/* Scrollbar overrides for light mode */
+.light-mode ::-webkit-scrollbar-track {
+  background: #F1F5F9;
+}
+
+.light-mode ::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+}
+
+/* Deep layout and general class fixes in light mode */
+.light-mode {
+  color: #0F172A;
+}
+
+.light-mode .text-slate-100,
+.light-mode .text-slate-200,
+.light-mode .text-slate-300,
+.light-mode .text-white {
+  color: #0F172A !important;
+}
+
+.light-mode .text-slate-400 {
+  color: #475569 !important;
+}
+
+.light-mode .text-slate-500 {
+  color: #64748B !important;
+}
+
+.light-mode .text-slate-600 {
+  color: #64748B !important;
+}
+
+.light-mode .text-cyan-400,
+.light-mode .text-cyan-500 {
+  color: #0891B2 !important;
+}
+
+.light-mode .bg-cyan-950\/80,
+.light-mode .bg-cyan-950\/60,
+.light-mode .bg-cyan-950\/40,
+.light-mode .bg-cyan-950\/30,
+.light-mode .bg-cyan-950\/20,
+.light-mode .bg-cyan-950\/15,
+.light-mode .bg-cyan-950\/10 {
+  background-color: rgba(6, 182, 212, 0.15) !important;
+}
+
+.light-mode .bg-rose-950\/40,
+.light-mode .bg-rose-950\/30,
+.light-mode .bg-rose-950\/20 {
+  background-color: rgba(244, 63, 94, 0.15) !important;
+}
+
+.light-mode .text-rose-400 {
+  color: #DC2626 !important;
+}
+
+.light-mode .border-cyan-800\/50,
+.light-mode .border-cyan-500\/30,
+.light-mode .border-cyan-500\/10,
+.light-mode .border-slate-800,
+.light-mode .border-slate-900 {
+  border-color: #E2E8F0 !important;
+}
+
+/* Map specific light-mode overrides */
+.light-mode .leaflet-container {
+  background: #F8FAFC !important;
+}
+
+.light-mode .leaflet-bar a {
+  background-color: #FFFFFF !important;
+  color: #475569 !important;
+  border-bottom: 1px solid #E2E8F0 !important;
+}
+
+.light-mode .leaflet-bar a:hover {
+  background-color: #F1F5F9 !important;
+  color: #0891B2 !important;
+}
+
+.light-mode .custom-tactical-popup .leaflet-popup-content-wrapper {
+  background: rgba(255, 255, 255, 0.98) !important;
+  border: 1px solid #CBD5E1 !important;
+  box-shadow: 0 4px 12px rgba(15, 22, 42, 0.08) !important;
+  color: #0F172A !important;
+}
+
+.light-mode .custom-tactical-popup .leaflet-popup-tip {
+  background: #FFFFFF !important;
+  border-left: 1px solid #CBD5E1 !important;
+  border-bottom: 1px solid #CBD5E1 !important;
+}
+
+.light-mode .custom-tactical-popup .leaflet-popup-close-button {
+  color: #64748B !important;
+}
+
+/* Chart light-mode compatibility */
+.light-mode .recharts-default-tooltip {
+  background-color: #FFFFFF !important;
+  border-color: #CBD5E1 !important;
+  color: #0F172A !important;
+}
+
+/* Live Anomaly Feed Table Light Mode Improvements */
+.light-mode .overflow-x-auto.bg-slate-950\/60,
+.light-mode .overflow-x-auto {
+  background-color: #FFFFFF !important;
+  border-color: #E2E8F0 !important;
+}
+
+.light-mode thead.bg-slate-950 {
+  background-color: #F8FAFC !important;
+  color: #475569 !important;
+  border-bottom: 2px solid #E2E8F0 !important;
+}
+
+.light-mode tbody.bg-slate-950\/10 {
+  background-color: #FFFFFF !important;
+}
+
+.light-mode tr.hover\:bg-slate-900\/20:hover {
+  background-color: #F8FAFC !important;
+}
+
+.light-mode td .text-cyan-400 {
+  color: #0891B2 !important;
+}
+
+.light-mode td .text-slate-400 {
+  color: #475569 !important;
+}
+
+.light-mode td button.bg-slate-900 {
+  background-color: #F1F5F9 !important;
+  border-color: #CBD5E1 !important;
+  color: #0891B2 !important;
+}
+
+.light-mode td button.bg-slate-900:hover {
+  background-color: #0891B2 !important;
+  color: #FFFFFF !important;
+  border-color: #0891B2 !important;
+}
+
+

@@ -1,0 +1,6 @@
+{
+  "name": "Seagnal AI",
+  "description": "Coastal maritime intelligence and vessel anomaly detection platform.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
