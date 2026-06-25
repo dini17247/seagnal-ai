@@ -8,12 +8,18 @@ if (env.WORKOS_API_KEY) {
     workos = new WorkOS(env.WORKOS_API_KEY, {
       clientId: env.WORKOS_CLIENT_ID,
     });
-    console.log('💼 WorkOS Client initialized successfully.');
-  } catch (err) {
-    console.warn('⚠️ WorkOS Client initialization failed:', err);
+
+    console.log('✅ WorkOS client initialized.');
+  } catch (error) {
+    console.error(
+      '❌ WorkOS client initialization failed:',
+      error
+    );
   }
 } else {
-  console.log('ℹ️ WorkOS API key is not configured.');
+  console.warn(
+    '⚠️ WORKOS_API_KEY is not configured.'
+  );
 }
 
 export { workos };

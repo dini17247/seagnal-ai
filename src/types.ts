@@ -100,6 +100,8 @@ export interface AuthUser {
   organization?: string;
   account_status: AccountStatus;
   last_login_at?: string;
+
+  permissions?: Permission[];
 }
 
 export type Permission =

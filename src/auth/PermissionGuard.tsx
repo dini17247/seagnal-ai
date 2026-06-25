@@ -1,25 +1,54 @@
 import React from 'react';
-import { useAuth } from './AuthContext';
-import { Permission } from '../types';
+
+import {
+  useAuth,
+} from './AuthContext';
+
+import {
+  Permission,
+} from '../types';
 
 interface PermissionGuardProps {
-  permission: Permission;
-  fallback?: React.ReactNode;
-  children: React.ReactNode;
+  permission:
+    Permission;
+
+  fallback?:
+    React.ReactNode;
+
+  children:
+    React.ReactNode;
 }
 
-export const PermissionGuard: React.FC<PermissionGuardProps> = ({ 
-  permission, 
-  fallback = null, 
-  children 
-}) => {
-  const { hasPermission } = useAuth();
+export const PermissionGuard:
+  React.FC<
+    PermissionGuardProps
+  > = ({
+    permission,
+    fallback = null,
+    children,
+  }) => {
+  const {
+    hasPermission,
+  } =
+    useAuth();
 
-  if (!hasPermission(permission)) {
-    return <>{fallback}</>;
+  if (
+    !hasPermission(
+      permission
+    )
+  ) {
+    return (
+      <>
+        {fallback}
+      </>
+    );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+    </>
+  );
 };
 
 export default PermissionGuard;
