@@ -20,7 +20,6 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Vessel, Alert, MaritimeZone } from '../types';
-import { mockMovements } from '../data';
 import { aiService } from '../services/aiService';
 
 interface IncidentReportViewProps {

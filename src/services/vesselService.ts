@@ -1,39 +1,121 @@
 import apiClient from './apiClient';
-import { Vessel, Movement, Alert } from '../types';
+
+import {
+  Vessel,
+  Movement,
+  Alert,
+  MaritimeZone,
+} from '../types';
 
 export const vesselService = {
-  async listVessels(params?: { search?: string; risk?: string; type?: string; limit?: number; offset?: number }): Promise<Vessel[]> {
-    let query = '';
-    if (params) {
-      const parts: string[] = [];
-      if (params.search) parts.push(`search=${encodeURIComponent(params.search)}`);
-      if (params.risk) parts.push(`risk=${encodeURIComponent(params.risk)}`);
-      if (params.type) parts.push(`type=${encodeURIComponent(params.type)}`);
-      if (params.limit) parts.push(`limit=${params.limit}`);
-      if (params.offset) parts.push(`offset=${params.offset}`);
-      if (parts.length > 0) query = `?${parts.join('&')}`;
+  async listVessels(params?: {
+    search?: string;
+    risk?: string;
+    type?: string;
+    limit?: number;
+    offset?: number;
+  }): Promise<Vessel[]> {
+    const searchParams =
+      new URLSearchParams();
+
+    if (params?.search) {
+      searchParams.set(
+        'search',
+        params.search
+      );
     }
-    return apiClient.get<Vessel[]>(`/vessels${query}`);
+
+    if (params?.risk) {
+      searchParams.set(
+        'risk',
+        params.risk
+      );
+    }
+
+    if (params?.type) {
+      searchParams.set(
+        'type',
+        params.type
+      );
+    }
+
+    if (
+      params?.limit !== undefined
+    ) {
+      searchParams.set(
+        'limit',
+        String(params.limit)
+      );
+    }
+
+    if (
+      params?.offset !== undefined
+    ) {
+      searchParams.set(
+        'offset',
+        String(params.offset)
+      );
+    }
+
+    const query =
+      searchParams.toString();
+
+    return apiClient.get<Vessel[]>(
+      `/vessels${
+        query ? `?${query}` : ''
+      }`
+    );
   },
 
-  async getVesselById(vesselId: string): Promise<Vessel> {
-    return apiClient.get<Vessel>(`/vessels/${vesselId}`);
+  async getVesselById(
+    vesselId: string
+  ): Promise<Vessel> {
+    return apiClient.get<Vessel>(
+      `/vessels/${vesselId}`
+    );
   },
 
-  async getMovements(vesselId: string, movementLimit?: number): Promise<Movement[]> {
-    const query = movementLimit ? `?movementLimit=${movementLimit}` : '';
-    return apiClient.get<Movement[]>(`/vessels/${vesselId}/movements${query}`);
+  async getMovements(
+    vesselId: string,
+    movementLimit?: number
+  ): Promise<Movement[]> {
+    const query =
+      movementLimit
+        ? `?movementLimit=${movementLimit}`
+        : '';
+
+    return apiClient.get<Movement[]>(
+      `/vessels/${vesselId}/movements${query}`
+    );
   },
 
-  async getVesselAlerts(vesselId: string): Promise<Alert[]> {
-    return apiClient.get<Alert[]>(`/vessels/${vesselId}/alerts`);
+  async getVesselAlerts(
+    vesselId: string
+  ): Promise<Alert[]> {
+    return apiClient.get<Alert[]>(
+      `/vessels/${vesselId}/alerts`
+    );
   },
 
-  async getMapVessels(): Promise<Vessel[]> {
-    return apiClient.get<Vessel[]>('/map/vessels');
+  async getMapVessels():
+    Promise<Vessel[]> {
+    return apiClient.get<Vessel[]>(
+      '/map/vessels'
+    );
   },
 
-  async getMaritimeZones(): Promise<any[]> {
-    return apiClient.get<any[]>('/maritime-zones');
-  }
+  async getMapMovements(
+    limitPerVessel = 30
+  ): Promise<Movement[]> {
+    return apiClient.get<Movement[]>(
+      `/map/movements?limitPerVessel=${limitPerVessel}`
+    );
+  },
+
+  async getMaritimeZones():
+    Promise<MaritimeZone[]> {
+    return apiClient.get<
+      MaritimeZone[]
+    >('/maritime-zones');
+  },
 };

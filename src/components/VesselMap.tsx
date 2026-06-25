@@ -1,12 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
-import { Vessel, MaritimeZone, Alert } from '../types';
-import { mockMovements, MAP_CENTER, MAP_DEFAULT_ZOOM } from '../data';
+import {
+  Vessel,
+  Movement,
+  MaritimeZone,
+  Alert,
+} from '../types';
+
+import {
+  MAP_CENTER,
+  MAP_DEFAULT_ZOOM,
+} from '../data';
 
 interface VesselMapProps {
   vessels: Vessel[];
   zones: MaritimeZone[];
   alerts: Alert[];
+  movements: Movement[];
   selectedVesselId?: string | null;
   onSelectVessel?: (vesselId: string) => void;
   height?: string;
@@ -17,6 +27,7 @@ export default function VesselMap({
   vessels,
   zones,
   alerts,
+  movements,
   selectedVesselId,
   onSelectVessel,
   height = '500px',
@@ -140,8 +151,12 @@ export default function VesselMap({
     vessels.forEach((vessel) => {
       const isSelected = vessel.vessel_id === selectedVesselId;
       if (showAllTrails || isSelected) {
-        const history = mockMovements
-          .filter((m) => m.vessel_id === vessel.vessel_id)
+        const history = movements
+          .filter(
+            (movement) =>
+              movement.vessel_id ===
+              vessel.vessel_id
+          )
           .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         if (history.length > 1) {
@@ -294,7 +309,15 @@ export default function VesselMap({
     return () => {
       clearTimeout(sizeTimer);
     };
-  }, [mapReady, vessels, zones, alerts, selectedVesselId, showAllTrails, document.documentElement.className]);;
+  }, [
+    mapReady,
+    vessels,
+    zones,
+    alerts,
+    movements,
+    selectedVesselId,
+    showAllTrails,
+  ]);
 
   return (
     <div className="relative overflow-hidden rounded-xl border border-slate-800 bg-slate-950 shadow-inner group">

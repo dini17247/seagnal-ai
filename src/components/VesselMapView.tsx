@@ -13,22 +13,35 @@ import {
   Eye,
   EyeOff
 } from 'lucide-react';
-import { Vessel, MaritimeZone, Alert } from '../types';
+import {
+  Vessel,
+  Movement,
+  MaritimeZone,
+  Alert,
+} from '../types';
 import VesselMap from './VesselMap';
 
 interface VesselMapViewProps {
   vessels: Vessel[];
   zones: MaritimeZone[];
   alerts: Alert[];
-  selectedVesselId: string | null;
-  onSelectVessel: (vesselId: string | null) => void;
-  onNavigate: (view: any) => void;
+  movements: Movement[];
+  selectedVesselId:
+    string | null;
+  onSelectVessel: (
+    vesselId:
+      string | null
+  ) => void;
+  onNavigate: (
+    view: any
+  ) => void;
 }
 
 export default function VesselMapView({
   vessels,
   zones,
   alerts,
+  movements,
   selectedVesselId,
   onSelectVessel,
   onNavigate,
@@ -299,7 +312,8 @@ export default function VesselMapView({
           <VesselMap
             vessels={filteredVessels}
             zones={zones}
-            alerts={alerts}
+            alerts={alerts} 
+            movements={movements}
             selectedVesselId={selectedVesselId}
             onSelectVessel={(id) => {
               onSelectVessel(id);

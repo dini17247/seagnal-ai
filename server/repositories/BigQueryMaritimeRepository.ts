@@ -1,279 +1,1176 @@
-import { Vessel, Movement, Alert, MaritimeZone, RiskLevel, AlertType, AlertStatus } from '../../src/types';
-import { bigQueryService } from '../services/bigQueryService';
+import {
+  Vessel,
+  Movement,
+  Alert,
+  MaritimeZone,
+  RiskLevel,
+  AlertType,
+  AlertStatus,
+} from '../../src/types';
+
+import {
+  bigQueryService,
+} from '../services/bigQueryService';
+
 import * as env from '../config/env';
 
-// Mock data is only imported for use when USE_MOCK_DATA=true
-import { mockVessels, mockMovements, mockAlerts, mockZones } from '../../src/data';
+import {
+  mockVessels,
+  mockMovements,
+  mockAlerts,
+  mockZones,
+} from '../../src/data';
+
+type VesselFilters = {
+  search?: string;
+  risk?: string;
+  type?: string;
+  limit?: number;
+  offset?: number;
+};
 
 export class BigQueryMaritimeRepository {
-
-  // ── Table references (server-side config only — never from user input) ─────
-
-  private getVesselsTable(): string {
-    return `\`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.${env.BIGQUERY_VESSELS_TABLE}\``;
-  }
-
-  private getMovementsTable(): string {
-    return `\`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.${env.BIGQUERY_MOVEMENTS_TABLE}\``;
-  }
-
-  private getAlertsTable(): string {
-    return `\`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.${env.BIGQUERY_ALERTS_TABLE}\``;
-  }
-
-  private getZonesTable(): string {
-    return `\`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.${env.BIGQUERY_ZONES_TABLE}\``;
-  }
-
-  // ── Row mappers ────────────────────────────────────────────────────────────
-  // Handle BigQuery timestamp objects, numeric strings, nulls, etc.
-
-  mapBigQueryVessel(row: any): Vessel {
-    return {
-      vessel_id: String(row.vessel_id ?? ''),
-      mmsi_hash: String(row.mmsi_hash ?? ''),
-      vessel_name: String(row.vessel_name ?? 'UNKNOWN'),
-      vessel_type: String(row.vessel_type ?? 'Unknown'),
-      latitude: Number(row.latitude ?? 0),
-      longitude: Number(row.longitude ?? 0),
-      speed: Number(row.speed ?? 0),
-      heading: Number(row.heading ?? 0),
-      last_ais_time: row.last_ais_time
-        ? (typeof row.last_ais_time === 'object' ? String(row.last_ais_time.value) : String(row.last_ais_time))
-        : new Date().toISOString(),
-      risk_score: Number(row.risk_score ?? 0),
-      risk_level: this.normalizeRiskLevel(row.risk_level),
-      status: String(row.status ?? 'Active'),
-      flag_state: row.flag_state != null ? String(row.flag_state) : undefined,
-      destination: row.destination != null ? String(row.destination) : undefined,
-      eta: row.eta != null ? (typeof row.eta === 'object' ? String(row.eta.value) : String(row.eta)) : undefined,
-      length: row.length != null ? Number(row.length) : undefined,
-      width: row.width != null ? Number(row.width) : undefined,
-    };
-  }
-
-  mapBigQueryMovement(row: any): Movement {
-    return {
-      movement_id: String(row.movement_id ?? row.id ?? ''),
-      vessel_id: String(row.vessel_id ?? ''),
-      timestamp: row.timestamp
-        ? (typeof row.timestamp === 'object' ? String(row.timestamp.value) : String(row.timestamp))
-        : new Date().toISOString(),
-      latitude: Number(row.latitude ?? 0),
-      longitude: Number(row.longitude ?? 0),
-      speed: Number(row.speed ?? 0),
-      heading: Number(row.heading ?? 0),
-      location_wkt: row.location_wkt != null ? String(row.location_wkt) : undefined,
-    };
-  }
-
-  mapBigQueryAlert(row: any): Alert {
-    return {
-      alert_id: String(row.alert_id ?? row.id ?? ''),
-      vessel_id: String(row.vessel_id ?? ''),
-      alert_type: this.normalizeAlertType(row.alert_type),
-      alert_time: row.alert_time
-        ? (typeof row.alert_time === 'object' ? String(row.alert_time.value) : String(row.alert_time))
-        : new Date().toISOString(),
-      severity: this.normalizeRiskLevel(row.severity),
-      description: String(row.description ?? ''),
-      status: this.normalizeAlertStatus(row.status),
-      recommended_action: String(row.recommended_action ?? ''),
-      zone_id: row.zone_id != null ? String(row.zone_id) : undefined,
-      reviewed_by: row.reviewed_by != null ? String(row.reviewed_by) : undefined,
-      resolution_notes: row.resolution_notes != null ? String(row.resolution_notes) : undefined,
-      resolved_at: row.resolved_at != null
-        ? (typeof row.resolved_at === 'object' ? String(row.resolved_at.value) : String(row.resolved_at))
-        : undefined,
-    };
-  }
-
-  mapBigQueryZone(row: any): MaritimeZone {
-    let coords: [number, number][] = [];
-    if (row.polygon_coordinates) {
-      try {
-        if (typeof row.polygon_coordinates === 'string') {
-          const parsed = JSON.parse(row.polygon_coordinates);
-          coords = Array.isArray(parsed) ? parsed : [];
-        } else if (Array.isArray(row.polygon_coordinates)) {
-          coords = row.polygon_coordinates;
-        }
-      } catch (e) {
-        console.error('Zone coordinate parse error for zone', row.zone_id, e);
-      }
+  private table(tableName: string): string {
+    if (!env.GCP_PROJECT_ID) {
+      throw new Error(
+        'GCP_PROJECT_ID is required when USE_MOCK_DATA=false.'
+      );
     }
-    return {
-      zone_id: String(row.zone_id ?? ''),
-      zone_name: String(row.zone_name ?? 'Restricted Zone'),
-      zone_type: String(row.zone_type ?? 'Restricted'),
-      risk_level: this.normalizeRiskLevel(row.risk_level),
-      polygon_coordinates: coords,
-    };
+
+    return `\`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.${tableName}\``;
   }
 
-  // ── Normalization helpers ──────────────────────────────────────────────────
+  private unwrap(value: any): any {
+    if (
+      value &&
+      typeof value === 'object' &&
+      'value' in value
+    ) {
+      return value.value;
+    }
 
-  private normalizeRiskLevel(value: any): RiskLevel {
-    const v = String(value ?? '').toLowerCase();
-    if (v === 'high') return 'High';
-    if (v === 'medium') return 'Medium';
+    return value;
+  }
+
+  private text(
+    value: any,
+    fallback = ''
+  ): string {
+    const unwrapped = this.unwrap(value);
+
+    return unwrapped == null
+      ? fallback
+      : String(unwrapped);
+  }
+
+  private number(
+    value: any,
+    fallback = 0
+  ): number {
+    const parsed =
+      Number(this.unwrap(value));
+
+    return Number.isFinite(parsed)
+      ? parsed
+      : fallback;
+  }
+
+  private date(
+    value: any,
+    fallback = new Date(0).toISOString()
+  ): string {
+    const unwrapped = this.unwrap(value);
+
+    if (
+      unwrapped == null ||
+      unwrapped === ''
+    ) {
+      return fallback;
+    }
+
+    const parsed =
+      new Date(String(unwrapped));
+
+    return Number.isNaN(
+      parsed.getTime()
+    )
+      ? String(unwrapped)
+      : parsed.toISOString();
+  }
+
+  private riskLevel(
+    value: any,
+    score?: any
+  ): RiskLevel {
+    const normalized = this.text(value)
+      .trim()
+      .toLowerCase();
+
+    if (
+      normalized === 'high' ||
+      normalized === 'critical' ||
+      normalized === 'severe'
+    ) {
+      return 'High';
+    }
+
+    if (
+      normalized === 'medium' ||
+      normalized === 'moderate'
+    ) {
+      return 'Medium';
+    }
+
+    if (normalized === 'low') {
+      return 'Low';
+    }
+
+    const numericScore =
+      this.number(score, -1);
+
+    if (numericScore >= 70) {
+      return 'High';
+    }
+
+    if (numericScore >= 40) {
+      return 'Medium';
+    }
+
     return 'Low';
   }
 
-  private normalizeAlertType(value: any): AlertType {
-    const validTypes: AlertType[] = [
-      'AIS Gap', 'Restricted Zone Entry', 'Speed Anomaly',
-      'Loitering', 'Route Deviation', 'Fishing-like Movement',
-    ];
-    const s = String(value ?? '');
-    return (validTypes.includes(s as AlertType) ? s : 'AIS Gap') as AlertType;
+  private alertType(
+    value: any
+  ): AlertType {
+    const normalized = this.text(value)
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ');
+
+    const aliases:
+      Record<string, AlertType> = {
+        'ais gap': 'AIS Gap',
+        'ais signal gap': 'AIS Gap',
+
+        'restricted zone entry':
+          'Restricted Zone Entry',
+
+        'zone violation':
+          'Restricted Zone Entry',
+
+        'speed anomaly':
+          'Speed Anomaly',
+
+        'sudden speed change':
+          'Speed Anomaly',
+
+        loitering: 'Loitering',
+
+        'route deviation':
+          'Route Deviation',
+
+        'fishing like movement':
+          'Fishing-like Movement',
+
+        'fishing movement':
+          'Fishing-like Movement',
+      };
+
+    return aliases[normalized] ??
+      'AIS Gap';
   }
 
-  private normalizeAlertStatus(value: any): AlertStatus {
-    const s = String(value ?? '');
-    if (s === 'Under Review') return 'Under Review';
-    if (s === 'Resolved') return 'Resolved';
+  private alertStatus(
+    row: any
+  ): AlertStatus {
+    const normalized =
+      this.text(row.status)
+        .trim()
+        .toLowerCase();
+
+    if (
+      normalized === 'under review' ||
+      normalized === 'reviewing'
+    ) {
+      return 'Under Review';
+    }
+
+    const resolved =
+      this.text(
+        row.resolved ??
+          row.is_resolved
+      )
+        .trim()
+        .toLowerCase();
+
+    if (
+      normalized === 'resolved' ||
+      normalized === 'closed' ||
+      resolved === 'true' ||
+      resolved === '1' ||
+      resolved === 'yes'
+    ) {
+      return 'Resolved';
+    }
+
     return 'Active';
   }
 
-  // ── Mock data helpers — only used when USE_MOCK_DATA=true ─────────────────
+  private movementTime(
+    row: any
+  ): string {
+    return this.date(
+      row.timestamp ??
+        row.ts ??
+        row.movement_time ??
+        row.recorded_at
+    );
+  }
 
-  private getMockVessels(filters: { search?: string; risk?: string; type?: string; limit?: number; offset?: number } = {}): Vessel[] {
-    let filtered = [...mockVessels] as Vessel[];
-    if (filters.search) {
-      const q = filters.search.toLowerCase();
-      filtered = filtered.filter(v => v.vessel_name.toLowerCase().includes(q) || v.mmsi_hash.toLowerCase().includes(q));
+  private mapMovement(
+    row: any,
+    index = 0
+  ): Movement {
+    const vesselId =
+      this.text(row.vessel_id);
+
+    const timestamp =
+      this.movementTime(row);
+
+    return {
+      movement_id: this.text(
+        row.movement_id ??
+          row.id,
+        `${vesselId}-${timestamp}-${index}`
+      ),
+
+      vessel_id: vesselId,
+
+      timestamp,
+
+      latitude: this.number(
+        row.latitude ??
+          row.lat
+      ),
+
+      longitude: this.number(
+        row.longitude ??
+          row.lon ??
+          row.lng
+      ),
+
+      speed: this.number(
+        row.speed ??
+          row.sog
+      ),
+
+      heading: this.number(
+        row.heading ??
+          row.course ??
+          row.cog
+      ),
+
+      location_wkt:
+        row.location_wkt ??
+        row.location ??
+        row.geography
+          ? this.text(
+              row.location_wkt ??
+                row.location ??
+                row.geography
+            )
+          : undefined,
+    };
+  }
+
+  private mapVessel(
+    row: any,
+    latestMovement?: Movement
+  ): Vessel {
+    const riskScore =
+      this.number(
+        row.risk_score ??
+          row.risk_base ??
+          row.base_risk_score
+      );
+
+    return {
+      vessel_id: this.text(
+        row.vessel_id ??
+          row.id
+      ),
+
+      mmsi_hash: this.text(
+        row.mmsi_hash ??
+          row.mmsi
+      ),
+
+      vessel_name: this.text(
+        row.vessel_name ??
+          row.name,
+        'UNKNOWN'
+      ),
+
+      vessel_type: this.text(
+        row.vessel_type ??
+          row.type,
+        'Unknown'
+      ),
+
+      latitude: this.number(
+        row.latitude ??
+          row.lat ??
+          row.current_lat ??
+          latestMovement?.latitude
+      ),
+
+      longitude: this.number(
+        row.longitude ??
+          row.lon ??
+          row.lng ??
+          row.current_lon ??
+          row.current_lng ??
+          latestMovement?.longitude
+      ),
+
+      speed: this.number(
+        row.speed ??
+          row.sog ??
+          latestMovement?.speed
+      ),
+
+      heading: this.number(
+        row.heading ??
+          row.course ??
+          row.cog ??
+          latestMovement?.heading
+      ),
+
+      last_ais_time: this.date(
+        row.last_ais_time ??
+          row.last_update ??
+          row.timestamp ??
+          row.ts ??
+          latestMovement?.timestamp
+      ),
+
+      risk_score: riskScore,
+
+      risk_level:
+        this.riskLevel(
+          row.risk_level,
+          riskScore
+        ),
+
+      status: this.text(
+        row.status ??
+          row.navigation_status ??
+          row.nav_status,
+        'Active'
+      ),
+
+      flag_state:
+        row.flag_state ??
+        row.flag ??
+        row.country
+          ? this.text(
+              row.flag_state ??
+                row.flag ??
+                row.country
+            )
+          : undefined,
+
+      destination:
+        row.destination != null
+          ? this.text(
+              row.destination
+            )
+          : undefined,
+
+      eta:
+        row.eta != null
+          ? this.date(
+              row.eta,
+              this.text(row.eta)
+            )
+          : undefined,
+
+      length:
+        row.length != null ||
+        row.length_m != null
+          ? this.number(
+              row.length ??
+                row.length_m
+            )
+          : undefined,
+
+      width:
+        row.width != null ||
+        row.width_m != null
+          ? this.number(
+              row.width ??
+                row.width_m
+            )
+          : undefined,
+    };
+  }
+
+  private mapAlert(
+    row: any
+  ): Alert {
+    return {
+      alert_id: this.text(
+        row.alert_id ??
+          row.id
+      ),
+
+      vessel_id:
+        this.text(row.vessel_id),
+
+      alert_type:
+        this.alertType(
+          row.alert_type ??
+            row.type
+        ),
+
+      alert_time: this.date(
+        row.alert_time ??
+          row.timestamp ??
+          row.ts ??
+          row.created_at
+      ),
+
+      severity:
+        this.riskLevel(
+          row.severity ??
+            row.risk_level
+        ),
+
+      description: this.text(
+        row.description ??
+          row.details ??
+          row.message
+      ),
+
+      status:
+        this.alertStatus(row),
+
+      recommended_action:
+        this.text(
+          row.recommended_action ??
+            row.action ??
+            row.sop
+        ),
+
+      zone_id:
+        row.zone_id != null
+          ? this.text(
+              row.zone_id
+            )
+          : undefined,
+
+      reviewed_by:
+        row.reviewed_by != null ||
+        row.resolved_by != null
+          ? this.text(
+              row.reviewed_by ??
+                row.resolved_by
+            )
+          : undefined,
+
+      resolution_notes:
+        row.resolution_notes != null ||
+        row.notes != null
+          ? this.text(
+              row.resolution_notes ??
+                row.notes
+            )
+          : undefined,
+
+      resolved_at:
+        row.resolved_at != null
+          ? this.date(
+              row.resolved_at,
+              this.text(
+                row.resolved_at
+              )
+            )
+          : undefined,
+    };
+  }
+
+  private coordinatePair(
+    pair: any
+  ): [number, number] | null {
+    if (
+      !Array.isArray(pair) ||
+      pair.length < 2
+    ) {
+      return null;
     }
-    if (filters.risk && filters.risk !== 'All') filtered = filtered.filter(v => v.risk_level === filters.risk);
-    if (filters.type && filters.type !== 'All') filtered = filtered.filter(v => v.vessel_type === filters.type);
-    const limit = filters.limit || 200;
-    const offset = filters.offset || 0;
-    return filtered.slice(offset, offset + limit);
-  }
 
-  private getMockVesselById(vesselId: string): Vessel | null {
-    const v = mockVessels.find(vessel => vessel.vessel_id === vesselId);
-    return v ? ({ ...v } as Vessel) : null;
-  }
+    const first =
+      Number(pair[0]);
 
-  private getMockMovements(vesselId: string, limit?: number): Movement[] {
-    const list = mockMovements.filter(m => m.vessel_id === vesselId);
-    const sorted = [...list].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    return sorted.slice(0, limit || 150) as Movement[];
-  }
+    const second =
+      Number(pair[1]);
 
-  private getMockAlerts(): Alert[] {
-    return [...mockAlerts] as Alert[];
-  }
-
-  private getMockAlertById(alertId: string): Alert | null {
-    const a = mockAlerts.find(al => al.alert_id === alertId);
-    return a ? ({ ...a } as Alert) : null;
-  }
-
-  private getMockMaritimeZones(): MaritimeZone[] {
-    return [...mockZones] as MaritimeZone[];
-  }
-
-  // ── Core repository methods ────────────────────────────────────────────────
-  // When USE_MOCK_DATA=true  → return mock data
-  // When USE_MOCK_DATA=false → query BigQuery; throw on failure (no silent fallback)
-
-  async listVessels(filters: { search?: string; risk?: string; type?: string; limit?: number; offset?: number } = {}): Promise<Vessel[]> {
-    if (env.USE_MOCK_DATA) {
-      return this.getMockVessels(filters);
+    if (
+      !Number.isFinite(first) ||
+      !Number.isFinite(second)
+    ) {
+      return null;
     }
 
-    const limit = Math.min(filters.limit || 50, 200);
-    const offset = filters.offset || 0;
+    /*
+      GeoJSON usually stores:
+      [longitude, latitude]
 
-    const queryConditions = ['1=1'];
-    const params: Record<string, any> = { limit, offset };
+      Leaflet expects:
+      [latitude, longitude]
+    */
+    if (
+      Math.abs(first) > 90 &&
+      Math.abs(second) <= 90
+    ) {
+      return [second, first];
+    }
 
-    if (filters.search) {
-      queryConditions.push('(LOWER(vessel_name) LIKE @search OR LOWER(mmsi_hash) LIKE @search)');
-      params.search = `%${filters.search.toLowerCase()}%`;
+    return [first, second];
+  }
+
+  private parseWktPolygon(
+    value: string
+  ): [number, number][] {
+    const match =
+      value.match(
+        /POLYGON\s*\(\((.+?)\)\)/i
+      );
+
+    if (!match) {
+      return [];
     }
-    if (filters.risk && filters.risk !== 'All') {
-      queryConditions.push('risk_level = @risk');
-      params.risk = filters.risk;
+
+    return match[1]
+      .split(',')
+      .map((segment) =>
+        segment
+          .trim()
+          .split(/\s+/)
+          .map(Number)
+      )
+      .map((pair) =>
+        this.coordinatePair(pair)
+      )
+      .filter(
+        (
+          pair
+        ): pair is [
+          number,
+          number
+        ] => pair !== null
+      );
+  }
+
+  private parsePolygon(
+    raw: any
+  ): [number, number][] {
+    let value =
+      this.unwrap(raw);
+
+    if (
+      value == null ||
+      value === ''
+    ) {
+      return [];
     }
-    if (filters.type && filters.type !== 'All') {
-      queryConditions.push('vessel_type = @type');
-      params.type = filters.type;
+
+    if (
+      typeof value === 'string'
+    ) {
+      const trimmed =
+        value.trim();
+
+      if (
+        /^POLYGON/i.test(trimmed)
+      ) {
+        return this.parseWktPolygon(
+          trimmed
+        );
+      }
+
+      try {
+        value =
+          JSON.parse(trimmed);
+      } catch {
+        return [];
+      }
     }
+
+    if (
+      value &&
+      !Array.isArray(value) &&
+      typeof value === 'object'
+    ) {
+      if (
+        value.type === 'Feature'
+      ) {
+        value = value.geometry;
+      }
+
+      if (
+        value?.type === 'Polygon'
+      ) {
+        value =
+          value.coordinates?.[0] ??
+          [];
+      }
+
+      if (
+        value?.type ===
+        'MultiPolygon'
+      ) {
+        value =
+          value.coordinates?.[0]?.[0] ??
+          [];
+      }
+    }
+
+    while (
+      Array.isArray(value) &&
+      value.length > 0 &&
+      Array.isArray(value[0]) &&
+      Array.isArray(value[0][0])
+    ) {
+      value = value[0];
+    }
+
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value
+      .map((pair) =>
+        this.coordinatePair(pair)
+      )
+      .filter(
+        (
+          pair
+        ): pair is [
+          number,
+          number
+        ] => pair !== null
+      );
+  }
+
+  private mapZone(
+    row: any
+  ): MaritimeZone {
+    return {
+      zone_id: this.text(
+        row.zone_id ??
+          row.id
+      ),
+
+      zone_name: this.text(
+        row.zone_name ??
+          row.name,
+        'Restricted Zone'
+      ),
+
+      zone_type: this.text(
+        row.zone_type ??
+          row.type,
+        'Restricted'
+      ),
+
+      risk_level:
+        this.riskLevel(
+          row.risk_level ??
+            row.severity ??
+            'High'
+        ),
+
+      polygon_coordinates:
+        this.parsePolygon(
+          row.polygon_coordinates ??
+            row.polygon_geojson ??
+            row.geojson ??
+            row.polygon ??
+            row.geometry ??
+            row.geography
+        ),
+    };
+  }
+
+  private async allMovementRows(
+    maxRows = 5000
+  ): Promise<any[]> {
+    const safeLimit =
+      Math.min(
+        Math.max(maxRows, 1),
+        10000
+      );
 
     const sql = `
-      SELECT * FROM ${this.getVesselsTable()}
-      WHERE ${queryConditions.join(' AND ')}
-      ORDER BY risk_score DESC
-      LIMIT @limit OFFSET @offset
+      SELECT *
+      FROM ${this.table(
+        env.BIGQUERY_MOVEMENTS_TABLE
+      )}
+      LIMIT ${safeLimit}
     `;
 
-    const rows = await bigQueryService.query<any>(sql, params);
-    return rows.map(r => this.mapBigQueryVessel(r));
+    return bigQueryService.query<any>(
+      sql
+    );
   }
 
-  async findVesselById(vesselId: string): Promise<Vessel | null> {
-    if (env.USE_MOCK_DATA) {
-      return this.getMockVesselById(vesselId);
+  private async latestMovementMap():
+    Promise<
+      Map<string, Movement>
+    > {
+    const rows =
+      await this.allMovementRows();
+
+    const movements =
+      rows.map(
+        (row, index) =>
+          this.mapMovement(
+            row,
+            index
+          )
+      );
+
+    const latest =
+      new Map<
+        string,
+        Movement
+      >();
+
+    for (
+      const movement of movements
+    ) {
+      const current =
+        latest.get(
+          movement.vessel_id
+        );
+
+      if (
+        !current ||
+        new Date(
+          movement.timestamp
+        ).getTime() >
+          new Date(
+            current.timestamp
+          ).getTime()
+      ) {
+        latest.set(
+          movement.vessel_id,
+          movement
+        );
+      }
     }
 
-    const sql = `SELECT * FROM ${this.getVesselsTable()} WHERE vessel_id = @vesselId LIMIT 1`;
-    const rows = await bigQueryService.query<any>(sql, { vesselId });
-    return rows.length > 0 ? this.mapBigQueryVessel(rows[0]) : null;
+    return latest;
   }
 
-  async getMovements(vesselId: string, limit?: number): Promise<Movement[]> {
+  async listVessels(
+    filters: VesselFilters = {}
+  ): Promise<Vessel[]> {
     if (env.USE_MOCK_DATA) {
-      return this.getMockMovements(vesselId, limit);
+      let data =
+        [...mockVessels] as Vessel[];
+
+      const query =
+        filters.search
+          ?.trim()
+          .toLowerCase();
+
+      if (query) {
+        data = data.filter(
+          (vessel) =>
+            vessel.vessel_name
+              .toLowerCase()
+              .includes(query) ||
+            vessel.mmsi_hash
+              .toLowerCase()
+              .includes(query)
+        );
+      }
+
+      if (
+        filters.risk &&
+        filters.risk !== 'All'
+      ) {
+        data = data.filter(
+          (vessel) =>
+            vessel.risk_level ===
+            filters.risk
+        );
+      }
+
+      if (
+        filters.type &&
+        filters.type !== 'All'
+      ) {
+        data = data.filter(
+          (vessel) =>
+            vessel.vessel_type ===
+            filters.type
+        );
+      }
+
+      const offset =
+        Math.max(
+          filters.offset ?? 0,
+          0
+        );
+
+      const limit =
+        Math.min(
+          Math.max(
+            filters.limit ?? 200,
+            1
+          ),
+          1000
+        );
+
+      return data.slice(
+        offset,
+        offset + limit
+      );
     }
 
-    const maxLimit = Math.min(limit || 100, 200);
-    const sql = `
-      SELECT * FROM ${this.getMovementsTable()}
-      WHERE vessel_id = @vesselId
-      ORDER BY timestamp DESC
-      LIMIT @limit
-    `;
-    const rows = await bigQueryService.query<any>(sql, { vesselId, limit: maxLimit });
-    return rows.map(r => this.mapBigQueryMovement(r));
+    const [
+      rows,
+      latestMovements,
+    ] = await Promise.all([
+      bigQueryService.query<any>(`
+        SELECT *
+        FROM ${this.table(
+          env.BIGQUERY_VESSELS_TABLE
+        )}
+        LIMIT 1000
+      `),
+
+      this.latestMovementMap(),
+    ]);
+
+    let data =
+      rows.map((row) => {
+        const vesselId =
+          this.text(
+            row.vessel_id ??
+              row.id
+          );
+
+        return this.mapVessel(
+          row,
+          latestMovements.get(
+            vesselId
+          )
+        );
+      });
+
+    const query =
+      filters.search
+        ?.trim()
+        .toLowerCase();
+
+    if (query) {
+      data = data.filter(
+        (vessel) =>
+          vessel.vessel_name
+            .toLowerCase()
+            .includes(query) ||
+          vessel.mmsi_hash
+            .toLowerCase()
+            .includes(query)
+      );
+    }
+
+    if (
+      filters.risk &&
+      filters.risk !== 'All'
+    ) {
+      data = data.filter(
+        (vessel) =>
+          vessel.risk_level ===
+          filters.risk
+      );
+    }
+
+    if (
+      filters.type &&
+      filters.type !== 'All'
+    ) {
+      data = data.filter(
+        (vessel) =>
+          vessel.vessel_type ===
+          filters.type
+      );
+    }
+
+    data.sort(
+      (first, second) =>
+        second.risk_score -
+          first.risk_score ||
+        first.vessel_name.localeCompare(
+          second.vessel_name
+        )
+    );
+
+    const offset =
+      Math.max(
+        filters.offset ?? 0,
+        0
+      );
+
+    const limit =
+      Math.min(
+        Math.max(
+          filters.limit ?? 200,
+          1
+        ),
+        1000
+      );
+
+    return data.slice(
+      offset,
+      offset + limit
+    );
   }
 
-  async listAlerts(limit?: number): Promise<Alert[]> {
-    if (env.USE_MOCK_DATA) {
-      return this.getMockAlerts();
-    }
+  async findVesselById(
+    vesselId: string
+  ): Promise<Vessel | null> {
+    const vessels =
+      await this.listVessels({
+        limit: 1000,
+      });
 
-    const maxLimit = Math.min(limit || 100, 200);
-    const sql = `
-      SELECT * FROM ${this.getAlertsTable()}
-      ORDER BY alert_time DESC
-      LIMIT @limit
-    `;
-    const rows = await bigQueryService.query<any>(sql, { limit: maxLimit });
-    return rows.map(r => this.mapBigQueryAlert(r));
+    return (
+      vessels.find(
+        (vessel) =>
+          vessel.vessel_id ===
+          vesselId
+      ) ?? null
+    );
   }
 
-  async findAlertById(alertId: string): Promise<Alert | null> {
+  async getMovements(
+    vesselId: string,
+    limit = 100
+  ): Promise<Movement[]> {
     if (env.USE_MOCK_DATA) {
-      return this.getMockAlertById(alertId);
+      return mockMovements
+        .filter(
+          (movement) =>
+            movement.vessel_id ===
+            vesselId
+        )
+        .sort(
+          (first, second) =>
+            new Date(
+              second.timestamp
+            ).getTime() -
+            new Date(
+              first.timestamp
+            ).getTime()
+        )
+        .slice(
+          0,
+          Math.min(
+            Math.max(limit, 1),
+            500
+          )
+        );
     }
 
-    const sql = `SELECT * FROM ${this.getAlertsTable()} WHERE alert_id = @alertId LIMIT 1`;
-    const rows = await bigQueryService.query<any>(sql, { alertId });
-    return rows.length > 0 ? this.mapBigQueryAlert(rows[0]) : null;
+    const rows =
+      await this.allMovementRows();
+
+    return rows
+      .map((row, index) =>
+        this.mapMovement(
+          row,
+          index
+        )
+      )
+      .filter(
+        (movement) =>
+          movement.vessel_id ===
+          vesselId
+      )
+      .sort(
+        (first, second) =>
+          new Date(
+            second.timestamp
+          ).getTime() -
+          new Date(
+            first.timestamp
+          ).getTime()
+      )
+      .slice(
+        0,
+        Math.min(
+          Math.max(limit, 1),
+          500
+        )
+      );
   }
 
-  async getMaritimeZones(): Promise<MaritimeZone[]> {
-    if (env.USE_MOCK_DATA) {
-      return this.getMockMaritimeZones();
+  async listRecentMovements(
+    limitPerVessel = 30
+  ): Promise<Movement[]> {
+    const source =
+      env.USE_MOCK_DATA
+        ? ([...mockMovements] as Movement[])
+        : (
+            await this.allMovementRows()
+          ).map(
+            (row, index) =>
+              this.mapMovement(
+                row,
+                index
+              )
+          );
+
+    const groups =
+      new Map<
+        string,
+        Movement[]
+      >();
+
+    for (
+      const movement of source
+    ) {
+      const group =
+        groups.get(
+          movement.vessel_id
+        ) ?? [];
+
+      group.push(movement);
+
+      groups.set(
+        movement.vessel_id,
+        group
+      );
     }
 
-    const sql = `SELECT * FROM ${this.getZonesTable()} LIMIT 200`;
-    const rows = await bigQueryService.query<any>(sql);
-    return rows.map(r => this.mapBigQueryZone(r));
+    const safeLimit =
+      Math.min(
+        Math.max(
+          limitPerVessel,
+          1
+        ),
+        100
+      );
+
+    return Array.from(
+      groups.values()
+    ).flatMap((group) =>
+      group
+        .sort(
+          (first, second) =>
+            new Date(
+              second.timestamp
+            ).getTime() -
+            new Date(
+              first.timestamp
+            ).getTime()
+        )
+        .slice(0, safeLimit)
+        .sort(
+          (first, second) =>
+            new Date(
+              first.timestamp
+            ).getTime() -
+            new Date(
+              second.timestamp
+            ).getTime()
+        )
+    );
+  }
+
+  async listAlerts(
+    limit = 200
+  ): Promise<Alert[]> {
+    if (env.USE_MOCK_DATA) {
+      return [
+        ...mockAlerts,
+      ] as Alert[];
+    }
+
+    const safeLimit =
+      Math.min(
+        Math.max(limit, 1),
+        1000
+      );
+
+    const rows =
+      await bigQueryService.query<any>(`
+        SELECT *
+        FROM ${this.table(
+          env.BIGQUERY_ALERTS_TABLE
+        )}
+        LIMIT ${safeLimit}
+      `);
+
+    return rows
+      .map((row) =>
+        this.mapAlert(row)
+      )
+      .sort(
+        (first, second) =>
+          new Date(
+            second.alert_time
+          ).getTime() -
+          new Date(
+            first.alert_time
+          ).getTime()
+      );
+  }
+
+  async findAlertById(
+    alertId: string
+  ): Promise<Alert | null> {
+    const alerts =
+      await this.listAlerts(
+        1000
+      );
+
+    return (
+      alerts.find(
+        (alert) =>
+          alert.alert_id ===
+          alertId
+      ) ?? null
+    );
+  }
+
+  async getMaritimeZones():
+    Promise<MaritimeZone[]> {
+    if (env.USE_MOCK_DATA) {
+      return [
+        ...mockZones,
+      ] as MaritimeZone[];
+    }
+
+    const rows =
+      await bigQueryService.query<any>(`
+        SELECT *
+        FROM ${this.table(
+          env.BIGQUERY_ZONES_TABLE
+        )}
+        LIMIT 500
+      `);
+
+    return rows.map((row) =>
+      this.mapZone(row)
+    );
   }
 }
 
-export const bigQueryMaritimeRepository = new BigQueryMaritimeRepository();
+export const bigQueryMaritimeRepository =
+  new BigQueryMaritimeRepository();

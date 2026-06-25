@@ -48,55 +48,116 @@ router.get('/health', (_req, res) => {
   });
 });
 
-router.get('/health/bigquery', async (_req, res) => {
-  if (env.USE_MOCK_DATA) {
-    return res.json({
-      success: true,
-      status: 'mock',
-      message: 'USE_MOCK_DATA=true — BigQuery not queried.',
-    });
-  }
-
-  try {
-    const { bigQueryService } = await import('../services/bigQueryService');
-
-    if (!bigQueryService.isAvailable()) {
-      return res.status(503).json({
-        success: false,
-        status: 'unavailable',
-        error: 'BigQuery client did not initialize. Check ADC credentials.',
+router.get(
+  '/health/bigquery',
+  async (_req, res) => {
+    if (env.USE_MOCK_DATA) {
+      return res.json({
+        success: true,
+        status: 'mock',
+        message:
+          'USE_MOCK_DATA=true — BigQuery not queried.',
       });
     }
 
-    // Run a real connectivity test query
-    await bigQueryService.query<any>('SELECT 1 AS connected', {});
+    try {
+      const {
+        bigQueryService,
+      } = await import(
+        '../services/bigQueryService'
+      );
 
-    // Also verify the configured dataset is accessible
-    const datasetCheckSql = `
-      SELECT COUNT(*) AS table_count
-      FROM \`${env.GCP_PROJECT_ID}.${env.BIGQUERY_DATASET_ID}.INFORMATION_SCHEMA.TABLES\`
-    `;
-    const datasetRows = await bigQueryService.query<any>(datasetCheckSql, {});
-    const tableCount = datasetRows[0]?.table_count ?? 0;
+      if (
+        !bigQueryService.isAvailable()
+      ) {
+        return res.status(503).json({
+          success: false,
+          status: 'unavailable',
+          error:
+            'BigQuery client did not initialize. Check Google Cloud credentials.',
+        });
+      }
 
-    res.json({
-      success: true,
-      status: 'connected',
-      details: {
-        projectId: env.GCP_PROJECT_ID,
-        datasetId: env.BIGQUERY_DATASET_ID,
-        tableCount: Number(tableCount),
-      },
-    });
-  } catch (err: any) {
-    console.error('❌ BigQuery health check failed:', err.message);
-    res.status(503).json({
-      success: false,
-      status: 'error',
-      error: err.message,
-    });
+      await bigQueryService.query(
+        'SELECT 1 AS connected'
+      );
+
+      const configuredTables = [
+        env.BIGQUERY_VESSELS_TABLE,
+        env.BIGQUERY_MOVEMENTS_TABLE,
+        env.BIGQUERY_ALERTS_TABLE,
+        env.BIGQUERY_ZONES_TABLE,
+      ];
+
+      const schemas =
+        await Promise.all(
+          configuredTables.map(
+            (tableName) =>
+              bigQueryService.inspectTable(
+                tableName,
+                true
+              )
+          )
+        );
+
+      const missingTables =
+        schemas
+          .filter(
+            (schema) =>
+              !schema.exists
+          )
+          .map(
+            (schema) =>
+              schema.tableName
+          );
+
+      return res
+        .status(
+          missingTables.length > 0
+            ? 503
+            : 200
+        )
+        .json({
+          success:
+            missingTables.length === 0,
+
+          status:
+            missingTables.length === 0
+              ? 'connected'
+              : 'schema_error',
+
+          details: {
+            projectId:
+              env.GCP_PROJECT_ID,
+
+            datasetId:
+              env.BIGQUERY_DATASET_ID,
+
+            location:
+              env.BIGQUERY_LOCATION ||
+              'auto',
+
+            tables: schemas,
+
+            missingTables,
+          },
+        });
+    } catch (error: any) {
+      console.error(
+        '❌ BigQuery health check failed:',
+        error.message
+      );
+
+      return res
+        .status(503)
+        .json({
+          success: false,
+          status: 'error',
+          error: error.message,
+        });
+    }
   }
-});
+);
 
 
 // --- 2. AUTHENTICATION (Apply Middleware globally below this point if AUTH_REQUIRED is true) ---
@@ -278,6 +339,46 @@ router.get('/map/vessels', requirePermission('map.view'), async (req: Authentica
     next(error);
   }
 });
+
+router.get(
+  '/map/movements',
+  requirePermission('map.view'),
+  async (
+    req: AuthenticatedRequest,
+    res,
+    next
+  ) => {
+    try {
+      const requestedLimit =
+        req.query.limitPerVessel
+          ? Number(
+              req.query
+                .limitPerVessel
+            )
+          : 30;
+
+      const limitPerVessel =
+        Number.isFinite(
+          requestedLimit
+        )
+          ? requestedLimit
+          : 30;
+
+      const movements =
+        await bigQueryMaritimeRepository
+          .listRecentMovements(
+            limitPerVessel
+          );
+
+      res.json({
+        success: true,
+        data: movements,
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 
 router.get('/maritime-zones', requirePermission('map.view'), async (req: AuthenticatedRequest, res, next) => {
   try {

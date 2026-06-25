@@ -19,12 +19,15 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Vessel, Alert, MaritimeZone, Movement } from '../types';
-import { mockMovements, mockAIEvaluation } from '../data';
+import {
+  mockAIEvaluation,
+} from '../data';
 import VesselMap from './VesselMap';
 // Recharts imports removed to simplify the dashboard further with plain tabular streams
 
 interface VesselDetailViewProps {
   vessels: Vessel[];
+  movements: Movement[];
   alerts: Alert[];
   zones: MaritimeZone[];
   selectedVesselId: string | null;
@@ -38,6 +41,7 @@ export default function VesselDetailView({
   vessels,
   alerts,
   zones,
+  movements,
   selectedVesselId,
   onBack,
   onNavigate,
@@ -52,11 +56,27 @@ export default function VesselDetailView({
   }, [vessels, selectedSpecId]);
 
   // Movements history for charting
-  const currentMovements = useMemo(() => {
-    return mockMovements
-      .filter((m) => m.vessel_id === currentVessel.vessel_id)
-      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
-  }, [currentVessel]);
+  const currentMovements =
+  useMemo(() => {
+    return movements
+      .filter(
+        (movement) =>
+          movement.vessel_id ===
+          currentVessel.vessel_id
+      )
+      .sort(
+        (first, second) =>
+          new Date(
+            first.timestamp
+          ).getTime() -
+          new Date(
+            second.timestamp
+          ).getTime()
+      );
+  }, [
+    currentVessel,
+    movements,
+  ]);
 
   // Chart data formatting
   const chartData = useMemo(() => {
@@ -243,6 +263,7 @@ export default function VesselDetailView({
                 vessels={[currentVessel]} 
                 zones={zones} 
                 alerts={alerts} 
+                movements={currentMovements}
                 selectedVesselId={currentVessel.vessel_id} 
                 height="100%" 
                 showAllTrails={false}

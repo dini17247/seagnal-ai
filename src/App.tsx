@@ -1,6 +1,15 @@
 import { useState, useMemo, useEffect, useRef } from 'react';
 import { defaultSettings as initialSettings } from './data';
-import { Vessel, Alert, MaritimeZone, PlatformSettings, ViewType, AlertStatus, RiskLevel } from './types';
+import {
+  Vessel,
+  Movement,
+  Alert,
+  MaritimeZone,
+  PlatformSettings,
+  ViewType,
+  AlertStatus,
+  RiskLevel,
+} from './types';
 import Sidebar from './components/Sidebar';
 import DashboardView from './components/DashboardView';
 import VesselMapView from './components/VesselMapView';
@@ -36,8 +45,12 @@ function BaseAppLayout() {
   const { showToast } = useToast();
   
   const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  const [vessels, setVessels] = useState<Vessel[]>([]);
-  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [vessels, setVessels] =
+    useState<Vessel[]>([]);
+  const [movements, setMovements] =
+    useState<Movement[]>([]);
+  const [alerts, setAlerts] =
+    useState<Alert[]>([]);
   const [zones, setZones] = useState<MaritimeZone[]>([]);
   const [settings, setSettings] = useState<PlatformSettings>(initialSettings);
   const [loadingFeeds, setLoadingFeeds] = useState<boolean>(true);
@@ -55,14 +68,30 @@ function BaseAppLayout() {
     try {
       setLoadingFeeds(true);
       setDataError(null);
-      const [allVessels, allAlerts, allZones, currentSet] = await Promise.all([
-        vesselService.listVessels(),
+      const [
+        allVessels,
+        allMovements,
+        allAlerts,
+        allZones,
+        currentSet,
+      ] = await Promise.all([
+        vesselService.listVessels({
+          limit: 500,
+        }),
+
+        vesselService.getMapMovements(
+          40
+        ),
+
         alertService.listAlerts(),
+
         vesselService.getMaritimeZones(),
+
         settingsService.getSettings(),
       ]);
 
       setVessels(allVessels);
+      setMovements(allMovements);
       setAlerts(allAlerts);
       if (allZones && allZones.length > 0) {
         setZones(allZones);
@@ -352,31 +381,44 @@ function BaseAppLayout() {
           
           {/* Render individual page modules safely */}
           {currentView === 'dashboard' && (
-            <DashboardView 
-              vessels={vessels} 
-              alerts={alerts} 
-              zones={zones} 
-              onSelectVessel={handleVesselFocus} 
-              onNavigate={(view) => setCurrentView(view)} 
+            <DashboardView
+              vessels={vessels}
+              alerts={alerts}
+              zones={zones}
+              movements={movements}
+              onSelectVessel={
+                handleVesselFocus
+              }
+              onNavigate={(view) =>
+                setCurrentView(view)
+              }
             />
           )}
 
           {currentView === 'map' && (
-            <VesselMapView 
-              vessels={vessels} 
-              zones={zones} 
-              alerts={alerts} 
-              selectedVesselId={selectedVesselId}
-              onSelectVessel={setSelectedVesselId}
-              onNavigate={(view) => setCurrentView(view)}
+            <VesselMapView
+              vessels={vessels}
+              zones={zones}
+              alerts={alerts}
+              movements={movements}
+              selectedVesselId={
+                selectedVesselId
+              }
+              onSelectVessel={
+                setSelectedVesselId
+              }
+              onNavigate={(view) =>
+                setCurrentView(view)
+              }
             />
           )}
 
           {currentView === 'vessels' && (
-            <VesselDetailView 
-              vessels={vessels} 
-              alerts={alerts} 
-              zones={zones} 
+            <VesselDetailView
+              vessels={vessels}
+              alerts={alerts}
+              zones={zones}
+              movements={movements}
               selectedVesselId={selectedVesselId}
               onBack={() => {
                 setSelectedVesselId(null);

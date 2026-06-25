@@ -10,7 +10,12 @@ import {
   ExternalLink,
   RefreshCw
 } from 'lucide-react';
-import { Vessel, Alert, MaritimeZone } from '../types';
+import {
+  Vessel,
+  Movement,
+  Alert,
+  MaritimeZone,
+} from '../types';
 import { dashboardService, DashboardSummary } from '../services/dashboardService';
 import VesselMap from './VesselMap';
 import LoadingPanel from './common/LoadingPanel';
@@ -20,6 +25,7 @@ interface DashboardViewProps {
   vessels: Vessel[];
   alerts: Alert[];
   zones: MaritimeZone[];
+  movements: Movement[];
   onSelectVessel: (vesselId: string) => void;
   onNavigate: (view: any) => void;
 }
@@ -28,6 +34,7 @@ export default function DashboardView({
   vessels, 
   alerts, 
   zones, 
+  movements,
   onSelectVessel, 
   onNavigate 
 }: DashboardViewProps) {
@@ -164,6 +171,7 @@ export default function DashboardView({
             vessels={vessels} 
             zones={zones} 
             alerts={alerts} 
+            movements={movements}
             height="280px"
             onSelectVessel={(id) => {
               onSelectVessel(id);
