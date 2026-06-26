@@ -1,13 +1,11 @@
 import { useState, useMemo, useEffect } from 'react';
 import { 
   FileText, 
-  Download, 
   Printer, 
   UserCheck, 
   Globe, 
   MapPin, 
   AlertTriangle, 
-  Sparkles, 
   Save, 
   Check, 
   Clock, 
@@ -20,7 +18,10 @@ import {
   BookOpen
 } from 'lucide-react';
 import { Vessel, Alert, MaritimeZone } from '../types';
-import { aiService } from '../services/aiService';
+import { aiService, type AISummaryResponse } from '../services/aiService';
+import { reportService } from '../services/reportService';
+import GeminiIncidentBrief from './GeminiIncidentBrief';
+import PrintableIncidentReport from './PrintableIncidentReport';
 
 interface IncidentReportViewProps {
   vessels: Vessel[];
@@ -50,9 +51,9 @@ export default function IncidentReportView({
   const [archiveType, setArchiveType] = useState('All');
 
   // AI Generation State
-  const [generatedAiSummary, setGeneratedAiSummary] = useState<string>('');
+  const [generatedAiReport, setGeneratedAiReport] = useState<AISummaryResponse | null>(null);
   const [isGeneratingAi, setIsGeneratingAi] = useState<boolean>(false);
-  const [aiModelUsed, setAiModelUsed] = useState<string>('');
+  const [aiGenerationError, setAiGenerationError] = useState<string>('');
 
   const resolvedAlerts = useMemo(() => {
     return alerts.filter((a) => a.status === 'Resolved');
@@ -101,17 +102,16 @@ export default function IncidentReportView({
 
   const [savingNote, setSavingNote] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [exporting, setExporting] = useState(false);
-  const [exportSuccess, setExportSuccess] = useState(false);
+  const [savedReports, setSavedReports] = useState<Record<string, { id: string; reportNumber: string }>>({});
 
   const currentVessel = useMemo(() => {
     return vessels.find((v) => v.vessel_id === selectedVesselId) || vessels[0];
   }, [vessels, selectedVesselId]);
 
-  // Reset generated AI summaries when picking another vessel
+  // Reset generated AI report when the briefing subject changes.
   useEffect(() => {
-    setGeneratedAiSummary('');
-    setAiModelUsed('');
+    setGeneratedAiReport(null);
+    setAiGenerationError('');
   }, [selectedVesselId]);
 
   const aiAgents = useMemo(() => [
@@ -181,42 +181,189 @@ export default function IncidentReportView({
     return alerts.filter((a) => a.vessel_id === currentVessel?.vessel_id);
   }, [alerts, currentVessel]);
 
+  const prioritizedVesselAlerts = useMemo(() => {
+    const severityRank: Record<Alert['severity'], number> = {
+      High: 3,
+      Medium: 2,
+      Low: 1,
+    };
+
+    return [...vesselAlerts].sort((first, second) => {
+      const firstOpen = first.status === 'Resolved' ? 0 : 1;
+      const secondOpen = second.status === 'Resolved' ? 0 : 1;
+
+      if (firstOpen !== secondOpen) {
+        return secondOpen - firstOpen;
+      }
+
+      const severityDifference =
+        severityRank[second.severity] - severityRank[first.severity];
+
+      if (severityDifference !== 0) {
+        return severityDifference;
+      }
+
+      return (
+        new Date(second.alert_time).getTime() -
+        new Date(first.alert_time).getTime()
+      );
+    });
+  }, [vesselAlerts]);
+
   const handleGenerateAiSummary = async () => {
     if (!currentVessel) return;
+
     try {
       setIsGeneratingAi(true);
-      const activeAlertIds = vesselAlerts.slice(0, 4).map(a => a.alert_id);
-      const res = await aiService.generateIncidentSummary({
+      setAiGenerationError('');
+
+      const relevantAlertIds = prioritizedVesselAlerts
+        .slice(0, 12)
+        .map((alert) => alert.alert_id);
+
+      const response = await aiService.generateIncidentSummary({
         vessel_id: currentVessel.vessel_id,
-        alert_ids: activeAlertIds,
-        officer_context: officerNotes[currentVessel.vessel_id]
+        alert_ids: relevantAlertIds,
+        officer_context: officerNotes[currentVessel.vessel_id] || '',
       });
-      setGeneratedAiSummary(res.summary);
-      setAiModelUsed(res.model);
-    } catch (err) {
-      console.error(err);
-      setGeneratedAiSummary('An error occurred while compiling full incident summary server-side.');
+
+      setGeneratedAiReport(response);
+    } catch (error: any) {
+      console.error(error);
+      setAiGenerationError(
+        error?.message || 'The incident report could not be generated. Check the API and data connections.',
+      );
     } finally {
       setIsGeneratingAi(false);
     }
   };
 
-  const handleSaveNotes = () => {
-    setSavingNote(true);
-    setTimeout(() => {
-      setSavingNote(false);
+  const handleSaveReport = async () => {
+    if (!currentVessel) return;
+
+    if (!generatedAiReport) {
+      setAiGenerationError(
+        'Generate the professional AI report before saving the dossier.',
+      );
+      return;
+    }
+
+    try {
+      setSavingNote(true);
+      setSaveSuccess(false);
+      setAiGenerationError('');
+
+      const existingReport = savedReports[currentVessel.vessel_id];
+      const payload = {
+        officer_notes: officerNotes[currentVessel.vessel_id] || '',
+        ai_summary: JSON.stringify(generatedAiReport),
+        final_recommendation: generatedAiReport.report.analyst_conclusion,
+        alert_ids: prioritizedVesselAlerts
+          .slice(0, 12)
+          .map((alert) => alert.alert_id),
+      };
+
+      const saved = existingReport
+        ? await reportService.updateReport(existingReport.id, payload)
+        : await reportService.createReport({
+            vessel_id: currentVessel.vessel_id,
+            primary_alert_id: prioritizedVesselAlerts[0]?.alert_id,
+            ...payload,
+          });
+
+      setSavedReports((current) => ({
+        ...current,
+        [currentVessel.vessel_id]: {
+          id: saved.id,
+          reportNumber: saved.report_number,
+        },
+      }));
       setSaveSuccess(true);
-      setTimeout(() => setSaveSuccess(false), 2000);
-    }, 600);
+      window.setTimeout(() => setSaveSuccess(false), 3000);
+    } catch (error: any) {
+      console.error(error);
+      setAiGenerationError(
+        error?.message || 'The report could not be saved. Check report permissions and backend storage.',
+      );
+    } finally {
+      setSavingNote(false);
+    }
   };
 
-  const handleExportIntel = () => {
-    setExporting(true);
-    setTimeout(() => {
-      setExporting(false);
-      setExportSuccess(true);
-      setTimeout(() => setExportSuccess(false), 3500);
-    }, 1500);
+  const handlePrintReport = () => {
+    if (!currentVessel || !generatedAiReport) {
+      setAiGenerationError(
+        'Generate the professional AI report before printing or saving it as PDF.',
+      );
+      return;
+    }
+
+    const printableReport = document.getElementById('printable-incident-report');
+    if (!printableReport) {
+      setAiGenerationError('The printable report layout is not available. Refresh the page and try again.');
+      return;
+    }
+
+    const reportNumber =
+      savedReports[currentVessel.vessel_id]?.reportNumber ||
+      `SEG-${currentVessel.vessel_id}-INTEL`;
+    const safeVesselName = currentVessel.vessel_name.replace(/[^a-z0-9]+/gi, '_');
+    const printWindow = window.open('', '_blank', 'width=1100,height=850');
+
+    if (!printWindow) {
+      setAiGenerationError('The browser blocked the print window. Allow pop-ups for localhost and try again.');
+      return;
+    }
+
+    setAiGenerationError('');
+
+    const styleMarkup = Array.from(document.querySelectorAll<HTMLStyleElement>('style'))
+      .map((style) => style.outerHTML)
+      .join('\n');
+
+    const stylesheetMarkup = Array.from(
+      document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]'),
+    )
+      .map((link) => {
+        const absoluteHref = new URL(link.href, window.location.href).href;
+        return `<link rel="stylesheet" href="${absoluteHref}" />`;
+      })
+      .join('\n');
+
+    printWindow.document.open();
+    printWindow.document.write(`<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${reportNumber}_${safeVesselName}</title>
+  ${stylesheetMarkup}
+  ${styleMarkup}
+  <style>
+    html, body { margin: 0; padding: 0; background: #ffffff; }
+    body { padding: 10mm; }
+    .print-only { display: block !important; }
+    @media print { body { padding: 0; } }
+  </style>
+</head>
+<body>
+  ${printableReport.outerHTML}
+</body>
+</html>`);
+    printWindow.document.close();
+
+    const openPrintDialog = () => {
+      printWindow.focus();
+      window.setTimeout(() => {
+        printWindow.print();
+      }, 350);
+    };
+
+    if (printWindow.document.readyState === 'complete') {
+      openPrintDialog();
+    } else {
+      printWindow.addEventListener('load', openPrintDialog, { once: true });
+    }
   };
 
   if (!currentVessel) {
@@ -294,21 +441,6 @@ export default function IncidentReportView({
 
       {subTab === 'dossier' ? (
         <>
-          {exportSuccess && (
-            <div className="bg-emerald-950/40 border border-emerald-500/30 text-emerald-350 rounded-xl p-4 text-xs font-mono font-bold animate-pulse flex items-center justify-between">
-              <span className="flex items-center gap-2">
-                <Check className="w-5 h-5 text-emerald-450" />
-                <span>REPORT EXPORTED COMPILING: Seagnal_Intel_{currentVessel.vessel_name.replace(/ /g, '_')}_Dossier.pdf compiled under analyst signature on backend service.</span>
-              </span>
-              <button 
-                onClick={() => setExportSuccess(false)}
-                className="text-[10px] uppercase font-bold text-slate-400 hover:text-white cursor-pointer"
-              >
-                DISMISS
-              </button>
-            </div>
-          )}
-
           {/* Main Board Layout: Government Dossier Styling */}
           <div className="bg-slate-900/30 border border-slate-900 rounded-2xl overflow-hidden p-6 md:p-8 space-y-8 relative">
             {/* Declassified Stamp Overlay */}
@@ -474,6 +606,15 @@ export default function IncidentReportView({
               })()}
             </div>
 
+            <GeminiIncidentBrief
+              vessel={currentVessel}
+              alerts={vesselAlerts}
+              response={generatedAiReport}
+              isGenerating={isGeneratingAi}
+              errorMessage={aiGenerationError}
+              onGenerate={handleGenerateAiSummary}
+            />
+
             {/* Splitting Content: 2 Columns */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
               
@@ -493,44 +634,6 @@ export default function IncidentReportView({
                       The AI rating structures compute general threat classifications based on geofence crossovers and missing transponder downtime logs.
                     </p>
                   </div>
-                </div>
-
-                {/* DYNAMIC GEMINI EXPOSURE SUMMARY */}
-                <div className="p-5 bg-violet-950/25 border border-violet-500/25 rounded-2xl space-y-3 shadow-lg">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-violet-400">
-                      <Sparkles className="w-4.5 h-4.5 animate-pulse text-violet-400" />
-                      <h4 className="text-xs font-black uppercase tracking-widest font-mono">
-                        Seagnal Gemini Analyst Summary
-                      </h4>
-                    </div>
-                    {aiModelUsed && (
-                      <span className="text-[8px] font-mono px-1.5 py-0.2 bg-violet-900/35 border border-violet-755 text-violet-300 rounded uppercase">
-                        {aiModelUsed}
-                      </span>
-                    )}
-                  </div>
-
-                  {generatedAiSummary ? (
-                    <div className="text-xs text-slate-300 leading-relaxed space-y-2 select-text font-sans max-h-64 overflow-y-auto pr-1">
-                      <div className="whitespace-pre-line text-justify text-[11px]">
-                        {generatedAiSummary}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="text-center py-4 space-y-3 bg-slate-950/40 border border-slate-850/30 rounded-xl">
-                      <p className="text-[11px] text-slate-500 leading-normal max-w-xs mx-auto text-center font-mono">
-                        No custom analytical brief generated yet. Connect server-side Gemini intelligence models.
-                      </p>
-                      <button
-                        onClick={handleGenerateAiSummary}
-                        disabled={isGeneratingAi}
-                        className="px-4 py-2 bg-violet-850 hover:bg-violet-750 text-violet-100 border border-violet-650 hover:border-violet-500 font-mono text-[10px] uppercase font-bold rounded-lg transition min-h-[44px] cursor-pointer"
-                      >
-                        {isGeneratingAi ? 'COMPILING BRIEFING...' : 'GENERATE AI BRIEFING WITH GEMINI'}
-                      </button>
-                    </div>
-                  )}
                 </div>
 
                 {/* Active alerts timeline */}
@@ -609,7 +712,7 @@ export default function IncidentReportView({
                       {saveSuccess && (
                         <span className="text-[10px] font-mono font-bold text-emerald-400 flex items-center gap-1">
                           <Check className="w-3 h-3" />
-                          Saved
+                          Saved {savedReports[currentVessel.vessel_id]?.reportNumber || ''}
                         </span>
                       )}
                     </div>
@@ -633,12 +736,12 @@ export default function IncidentReportView({
 
                   <div className="flex justify-end mt-4">
                     <button
-                      onClick={handleSaveNotes}
+                      onClick={handleSaveReport}
                       disabled={savingNote}
                       className="px-4 py-2 bg-slate-900 hover:bg-slate-850 hover:text-cyan-400 border border-slate-805 hover:border-cyan-500/30 text-xs font-bold text-slate-300 tracking-wider uppercase rounded-lg flex items-center gap-2 transition cursor-pointer"
                     >
                       <Save className="w-3.5 h-3.5" />
-                      <span>{savingNote ? 'SAVING...' : 'COMMIT LOGS'}</span>
+                      <span>{savingNote ? 'SAVING REPORT...' : 'SAVE REPORT DRAFT'}</span>
                     </button>
                   </div>
                 </div>
@@ -691,17 +794,25 @@ export default function IncidentReportView({
                 </button>
                 
                 <button
-                  onClick={handleExportIntel}
-                  disabled={exporting}
-                  className="px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 hover:scale-pulse text-slate-950 text-xs font-black tracking-widest uppercase rounded-lg flex items-center gap-1.5 transition shadow-lg shadow-cyan-950/40 cursor-pointer min-h-[44px]"
+                  onClick={handlePrintReport}
+                  disabled={!generatedAiReport}
+                  className="no-print px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-cyan-500 disabled:cursor-not-allowed disabled:opacity-50 text-slate-950 text-xs font-black tracking-widest uppercase rounded-lg flex items-center gap-1.5 transition shadow-lg shadow-cyan-950/40 cursor-pointer min-h-[44px]"
                 >
-                  <Download className="w-4 h-4 text-slate-950" />
-                  <span>{exporting ? 'COMPILING Dossier...' : 'EXPORT SECURE Dossier'}</span>
+                  <Printer className="w-4 h-4 text-slate-950" />
+                  <span>PRINT / SAVE PDF</span>
                 </button>
               </div>
             </div>
 
           </div>
+
+          <PrintableIncidentReport
+            vessel={currentVessel}
+            alerts={prioritizedVesselAlerts.slice(0, 12)}
+            officerNotes={officerNotes[currentVessel.vessel_id] || ''}
+            response={generatedAiReport}
+            savedReportNumber={savedReports[currentVessel.vessel_id]?.reportNumber}
+          />
         </>
       ) : (
         <div className="space-y-6">

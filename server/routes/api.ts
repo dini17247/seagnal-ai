@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import { GoogleGenAI } from '@google/genai';
 import * as env from '../config/env';
 import { 
   authMiddleware, 
@@ -7,6 +6,7 @@ import {
   AuthenticatedRequest 
 } from '../middleware/authMiddleware';
 import { bigQueryMaritimeRepository } from '../repositories/BigQueryMaritimeRepository';
+import { generateGeminiIncidentReport } from '../services/geminiIncidentService';
 
 // Import in-memory repos
 import { MemoryUserRepository } from '../repositories/memory/MemoryUserRepository';
@@ -767,97 +767,70 @@ router.post('/settings/reset', requirePermission('settings.update'), async (req:
 
 // --- 9. GEMINI INCIDENT ANALYSIS ENDPOINT (Task 19) ---
 
+router.get('/ai/status', requirePermission('reports.view'), (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      configured: Boolean(env.GEMINI_API_KEY),
+      model: env.GEMINI_MODEL,
+      transport: 'server-side',
+      output_format: 'structured-json',
+    },
+  });
+});
+
 router.post('/ai/incident-summary', requirePermission('reports.create'), async (req: AuthenticatedRequest, res, next) => {
   try {
-    const { vessel_id, alert_ids, officer_context } = req.body;
+    const { vessel_id, alert_ids, officer_context } = req.body ?? {};
 
-    if (!vessel_id) {
-      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Vessel ID parameter is required.' } });
-    }
-
-    const vessel = await bigQueryMaritimeRepository.findVesselById(vessel_id);
-    if (!vessel) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Vessel record not found.' } });
-    }
-
-    // Retrieve requested alerts details to prevent raw parameter leakage
-    const rawAlerts = await bigQueryMaritimeRepository.listAlerts();
-    const targetAlerts = rawAlerts.filter(a => alert_ids && alert_ids.includes(a.alert_id));
-
-    // Construct AI prompt safely
-    const alertsPrompt = targetAlerts.map(a => `- ${a.alert_type}: "${a.description}" (Severity: ${a.severity})`).join('\n');
-    const systemPrompt = `You are a high-level coastal intelligence analyst for Seagnal AI. Draft a professional, structured maritime incident summary based on provided vessel and anomaly flags. Output should be formatted elegantly in Markdown. Include: Anomaly Evaluation, Spatial/Temporal Assessment, and Recommendation. End with a standard analytical warning.`;
-    const prompt = `
-Vessel Name: ${vessel.vessel_name} (${vessel.vessel_type})
-Flag State: ${vessel.flag_state || 'Not declared'}
-Vessel Risk Score: ${vessel.risk_score} (${vessel.risk_level} Risk Category)
-Active Alerts:
-${alertsPrompt || '(No primary alert selected)'}
-
-Officer context and remarks: 
-"${officer_context || 'None provided'}"
-    `.trim();
-
-    // Check if Gemini API key is configured
-    if (!env.GEMINI_API_KEY) {
-      console.warn('⚠️ GEMINI_API_KEY is not defined. Returning deterministic high quality intelligence draft.');
-      const mockAISummary = `### AI-ASSISTED DOSSIER DRAFT (MOCK MODE)
-#### 1. Anomaly Evaluation & Risk Matrix
-Subject vessel **${vessel.vessel_name}** exhibits high-amplitude behavioral changes. Speed records dropped below nominal navigation limits while traversing sanctuary polygons, triggering multiple overlapping speed anomaly flags.
-
-#### 2. Pattern Analyis (Classification: Restricted)
-- **Primary Pattern:** Suspected vessel-to-vessel transfer / Loitering.
-- **Key Indicators:** Intermittent AIS gaps exceeding 4.5 hours coupled with speed anomalies down to 0.4 knots.
-
-#### 3. Strategic Action Plan & Operational Recommendation
-- **Coastal Patrol:** Deploy air/naval assets if vessel lingers over Sanctuary Bravo.
-- **Immediate Action:** Audit next transponder ping.
-
-*Disclaimer: This draft has been compiled via AI intelligence modules and requires Watch Commander confirmation and authentication.*`;
-
-      return res.json({
-        success: true,
-        data: {
-          summary: mockAISummary,
-          is_mock: true,
-          model: 'gemini-3.5-flash-fallback'
-        }
+    if (typeof vessel_id !== 'string' || !vessel_id.trim()) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Vessel ID parameter is required.' },
       });
     }
 
-    console.log('🤖 Sending context safely to Gemini client...');
-    const ai = new GoogleGenAI({
-      apiKey: env.GEMINI_API_KEY,
-      httpOptions: {
-        headers: {
-          'User-Agent': 'aistudio-build',
-        }
-      }
+    if (officer_context !== undefined && typeof officer_context !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'INVALID_INPUT', message: 'Officer context must be text.' },
+      });
+    }
+
+    const requestedAlertIds = Array.isArray(alert_ids)
+      ? alert_ids.filter((value): value is string => typeof value === 'string').slice(0, 20)
+      : [];
+
+    const [vessel, rawAlerts, movements, zones] = await Promise.all([
+      bigQueryMaritimeRepository.findVesselById(vessel_id.trim()),
+      bigQueryMaritimeRepository.listAlerts(1000),
+      bigQueryMaritimeRepository.getMovements(vessel_id.trim(), 30),
+      bigQueryMaritimeRepository.getMaritimeZones(),
+    ]);
+
+    if (!vessel) {
+      return res.status(404).json({
+        success: false,
+        error: { code: 'NOT_FOUND', message: 'Vessel record not found.' },
+      });
+    }
+
+    const vesselAlerts = rawAlerts.filter((alert) => alert.vessel_id === vessel.vessel_id);
+    const targetAlerts = requestedAlertIds.length
+      ? vesselAlerts.filter((alert) => requestedAlertIds.includes(alert.alert_id))
+      : vesselAlerts.slice(0, 12);
+
+    const result = await generateGeminiIncidentReport({
+      vessel,
+      alerts: targetAlerts,
+      movements,
+      zones,
+      officerContext: officer_context?.trim().slice(0, 4000),
     });
 
-    const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash',
-      contents: prompt,
-      config: {
-        systemInstruction: systemPrompt
-      }
-    });
-
-    const generatedText = response.text || 'Error: Model returned empty text.';
-    res.json({
-      success: true,
-      data: {
-        summary: generatedText,
-        is_mock: false,
-        model: 'gemini-3.5-flash'
-      }
-    });
-  } catch (error: any) {
-    console.error('❌ Server Gemini Invoke Failed:', error.message);
-    res.status(500).json({
-      success: false,
-      error: { code: 'AI_SUMMARIZER_ERR', message: `Gemini server failed: ${error.message}` }
-    });
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    return next(error);
   }
 });
 

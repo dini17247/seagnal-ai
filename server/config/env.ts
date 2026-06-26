@@ -61,6 +61,9 @@ export const CLOUD_SQL_PASSWORD =
 export const GEMINI_API_KEY =
   process.env.GEMINI_API_KEY;
 
+export const GEMINI_MODEL =
+  process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+
 export function validateEnv() {
   console.log('--- SEAGNAL AI RUNTIME CONFIG ---');
   console.log(`Environment: ${NODE_ENV}`);
