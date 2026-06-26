@@ -1,0 +1,14 @@
+.gcloudignore
+.git
+.gitignore
+node_modules
+dist
+coverage
+*.log
+.env
+.env.*
+!.env.example
+cloudrun.env.yaml
+cloudrun.env.yml
+service-account.json
+*-service-account.json

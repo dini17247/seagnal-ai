@@ -1,15 +1,12 @@
 import {
   Router,
+  type Request,
   type Response,
 } from 'express';
 
-import {
-  doubleCsrf,
-} from 'csrf-csrf';
+import { doubleCsrf } from 'csrf-csrf';
 
-import {
-  workos,
-} from '../auth/workosClient';
+import { workos } from '../auth/workosClient';
 
 import {
   SESSION_COOKIE_NAME,
@@ -25,11 +22,69 @@ import * as env from '../config/env';
 
 const router = Router();
 
+function firstForwardedValue(
+  value: string | undefined,
+): string | undefined {
+  return (
+    value
+      ?.split(',')[0]
+      ?.trim() || undefined
+  );
+}
+
 /**
- * Normalize email addresses before comparison.
+ * Resolve the public application URL.
+ *
+ * Local development may use APP_BASE_URL.
+ *
+ * Cloud Run derives the URL from:
+ * - X-Forwarded-Proto
+ * - X-Forwarded-Host
  */
+function getApplicationBaseUrl(
+  req: Request,
+): string {
+  if (env.APP_BASE_URL) {
+    return env.APP_BASE_URL.replace(
+      /\/$/,
+      '',
+    );
+  }
+
+  const protocol =
+    firstForwardedValue(
+      req.get('x-forwarded-proto'),
+    ) ||
+    req.protocol ||
+    'http';
+
+  const host =
+    firstForwardedValue(
+      req.get('x-forwarded-host'),
+    ) || req.get('host');
+
+  if (!host) {
+    throw new Error(
+      'Unable to determine the application host.',
+    );
+  }
+
+  return `${protocol}://${host}`;
+}
+
+function getWorkOSRedirectUri(
+  req: Request,
+): string {
+  return (
+    env.WORKOS_REDIRECT_URI ||
+    `${getApplicationBaseUrl(
+      req,
+    )}/callback`
+  );
+}
+
 function normalizeEmail(
-  value: unknown
+  value: unknown,
 ): string {
   return typeof value === 'string'
     ? value.trim().toLowerCase()
@@ -37,41 +92,42 @@ function normalizeEmail(
 }
 
 /**
- * Read administrator email addresses from:
+ * Supported environment variables:
  *
  * WORKOS_ADMIN_EMAILS=email1@example.com,email2@example.com
- *
- * WORKOS_ADMIN_EMAIL is also supported for compatibility.
+ * WORKOS_ADMIN_EMAIL=email@example.com
  */
-function getConfiguredAdminEmails():
-  Set<string> {
+function getConfiguredAdminEmails(): Set<string> {
   const configuredEmails = [
     process.env.WORKOS_ADMIN_EMAILS,
     process.env.WORKOS_ADMIN_EMAIL,
   ]
     .filter(
       (
-        value
+        value,
       ): value is string =>
-        typeof value === 'string'
+        typeof value === 'string',
     )
     .join(',')
     .split(',')
     .map(normalizeEmail)
     .filter(Boolean);
 
-  return new Set(
-    configuredEmails
-  );
+  return new Set(configuredEmails);
 }
 
 /**
- * Extract role slugs from the WorkOS session.
+ * WorkOS roles may be returned as:
  *
- * Supports either:
- * - "system_admin"
- * - { slug: "system_admin" }
- * - an array containing either format
+ * "system_admin"
+ *
+ * or:
+ *
+ * {
+ *   slug: "system_admin"
+ * }
+ *
+ * or an array containing either format.
  */
 function extractRoleSlugs(
   ...roleValues: unknown[]
@@ -80,20 +136,18 @@ function extractRoleSlugs(
     .flatMap((value) =>
       Array.isArray(value)
         ? value
-        : [value]
+        : [value],
     )
     .map((value) => {
       if (
-        typeof value ===
-        'string'
+        typeof value === 'string'
       ) {
         return value;
       }
 
       if (
         value &&
-        typeof value ===
-          'object' &&
+        typeof value === 'object' &&
         'slug' in value
       ) {
         const slug = (
@@ -102,8 +156,7 @@ function extractRoleSlugs(
           }
         ).slug;
 
-        return typeof slug ===
-          'string'
+        return typeof slug === 'string'
           ? slug
           : '';
       }
@@ -116,21 +169,21 @@ function extractRoleSlugs(
         .toLowerCase()
         .replace(
           /[\s-]+/g,
-          '_'
-        )
+          '_',
+        ),
     )
     .filter(Boolean);
 }
 
 /**
- * Resolve the application role without creating,
- * updating, deleting, or reactivating any WorkOS
- * organization membership.
+ * Resolve authorization without creating, updating,
+ * deleting or reactivating WorkOS organization
+ * memberships.
  */
 function resolveAuthorizationForUser(
   email: string,
   sessionRole?: unknown,
-  sessionRoles?: unknown
+  sessionRoles?: unknown,
 ) {
   const normalizedEmail =
     normalizeEmail(email);
@@ -141,31 +194,30 @@ function resolveAuthorizationForUser(
   const sessionRoleSlugs =
     extractRoleSlugs(
       sessionRole,
-      sessionRoles
+      sessionRoles,
     );
 
   const isAdministrator =
     adminEmails.has(
-      normalizedEmail
+      normalizedEmail,
     ) ||
     sessionRoleSlugs.includes(
-      WORKOS_ROLE_SLUGS.ADMIN
+      WORKOS_ROLE_SLUGS.ADMIN,
     );
 
   return getDevelopmentAuthorization(
     isAdministrator
       ? WORKOS_ROLE_SLUGS.ADMIN
-      : WORKOS_ROLE_SLUGS.VIEWER
+      : WORKOS_ROLE_SLUGS.VIEWER,
   );
 }
 
 /**
- * Express recommends clearing a cookie with the same
- * options used when setting it, but without maxAge or
- * expires.
+ * Clear the WorkOS session cookie using the same options
+ * that were used when setting it.
  */
 function clearSessionCookie(
-  res: Response
+  res: Response,
 ): void {
   const options = {
     ...getSessionCookieOptions(),
@@ -176,7 +228,7 @@ function clearSessionCookie(
 
   res.clearCookie(
     SESSION_COOKIE_NAME,
-    options
+    options,
   );
 }
 
@@ -188,17 +240,14 @@ const {
     env.CSRF_SECRET ||
     'development-only-csrf-secret-change-me',
 
-  getSessionIdentifier: (
-    req
-  ) =>
+  getSessionIdentifier: (req) =>
     req.cookies?.[
       SESSION_COOKIE_NAME
     ] ||
     req.ip ||
     'anonymous',
 
-  cookieName:
-    'x-csrf-token',
+  cookieName: 'x-csrf-token',
 
   cookieOptions: {
     httpOnly: true,
@@ -219,7 +268,7 @@ const {
   ],
 
   getCsrfTokenFromRequest: (
-    req
+    req,
   ) =>
     typeof req.headers[
       'x-csrf-token'
@@ -231,17 +280,17 @@ const {
 });
 
 /**
- * Start a fresh WorkOS AuthKit login.
+ * Start WorkOS AuthKit login.
  */
 router.get(
   '/login',
-  (_req, res) => {
+  (req, res) => {
     if (
       !env.AUTH_REQUIRED ||
       env.USE_MOCK_AUTH
     ) {
       return res.redirect(
-        env.APP_BASE_URL
+        getApplicationBaseUrl(req),
       );
     }
 
@@ -252,7 +301,7 @@ router.get(
       return res
         .status(500)
         .send(
-          'WorkOS is not configured. Check WORKOS_API_KEY and WORKOS_CLIENT_ID.'
+          'WorkOS is not configured. Check WORKOS_API_KEY and WORKOS_CLIENT_ID.',
         );
     }
 
@@ -260,45 +309,39 @@ router.get(
       const authorizationUrl =
         workos.userManagement
           .getAuthorizationUrl({
-            provider:
-              'authkit',
+            provider: 'authkit',
 
             clientId:
               env.WORKOS_CLIENT_ID,
 
             redirectUri:
-              env.WORKOS_REDIRECT_URI,
+              getWorkOSRedirectUri(
+                req,
+              ),
           });
 
-      /*
-       * Force AuthKit to display a fresh sign-in screen
-       * instead of silently choosing the previous user.
-       *
-       * These are added as URL parameters to avoid SDK
-       * version differences in parameter naming.
-       */
       const freshLoginUrl =
         new URL(
-          authorizationUrl
+          authorizationUrl,
         );
 
       freshLoginUrl.searchParams.set(
         'screen_hint',
-        'sign-in'
+        'sign-in',
       );
 
       freshLoginUrl.searchParams.set(
         'prompt',
-        'login'
+        'login',
       );
 
       return res.redirect(
-        freshLoginUrl.toString()
+        freshLoginUrl.toString(),
       );
     } catch (error: any) {
       console.error(
         '[Auth] Failed to generate WorkOS authorization URL:',
-        error
+        error,
       );
 
       return res
@@ -307,17 +350,20 @@ router.get(
           `Authentication could not start: ${
             error?.message ||
             'Unknown WorkOS error'
-          }`
+          }`,
         );
     }
-  }
+  },
 );
 
 /**
  * WorkOS OAuth callback.
  *
  * This route only authenticates the user and stores the
- * sealed session. It performs no membership operations.
+ * sealed WorkOS session.
+ *
+ * It does not create, update or reactivate organization
+ * memberships.
  */
 router.get(
   '/callback',
@@ -343,7 +389,7 @@ router.get(
           `WorkOS authentication failed: ${
             callbackErrorDescription ||
             callbackError
-          }`
+          }`,
         );
     }
 
@@ -357,7 +403,7 @@ router.get(
       return res
         .status(400)
         .send(
-          'The WorkOS callback did not include an authorization code.'
+          'The WorkOS callback did not include an authorization code.',
         );
     }
 
@@ -369,7 +415,7 @@ router.get(
       return res
         .status(500)
         .send(
-          'WorkOS server credentials are incomplete.'
+          'WorkOS server credentials are incomplete.',
         );
     }
 
@@ -383,8 +429,7 @@ router.get(
               env.WORKOS_CLIENT_ID,
 
             session: {
-              sealSession:
-                true,
+              sealSession: true,
 
               cookiePassword:
                 env.WORKOS_COOKIE_PASSWORD,
@@ -395,32 +440,33 @@ router.get(
         !authResponse.sealedSession
       ) {
         throw new Error(
-          'WorkOS did not return a sealed session.'
+          'WorkOS did not return a sealed session.',
         );
       }
 
-      /*
-       * Do not call:
-       * - createOrganizationMembership
-       * - reactivateOrganizationMembership
-       * - ensureViewerMembership
+      /**
+       * Never call:
        *
-       * Authentication and membership management are
-       * deliberately kept separate.
+       * createOrganizationMembership
+       * reactivateOrganizationMembership
+       * ensureViewerMembership
+       *
+       * Login and membership management must remain
+       * separate.
        */
       res.cookie(
         SESSION_COOKIE_NAME,
         authResponse.sealedSession,
-        getSessionCookieOptions()
+        getSessionCookieOptions(),
       );
 
       return res.redirect(
-        env.APP_BASE_URL
+        getApplicationBaseUrl(req),
       );
     } catch (error: any) {
       console.error(
         '[Auth] WorkOS callback failed:',
-        error
+        error,
       );
 
       const message =
@@ -431,7 +477,7 @@ router.get(
         message
           .toLowerCase()
           .includes(
-            'pending organization membership'
+            'pending organization membership',
           )
       ) {
         return res
@@ -443,18 +489,20 @@ router.get(
               'Open the WorkOS organization member list and remove the pending membership record itself.',
               'Revoking only the invitation may not remove the pending membership.',
               '',
-              'After removing it, return to http://localhost:3000/login and sign in again.',
-            ].join('\n')
+              `After removing it, return to ${getApplicationBaseUrl(
+                req,
+              )}/login and sign in again.`,
+            ].join('\n'),
           );
       }
 
       return res
         .status(500)
         .send(
-          `Authentication failed: ${message}`
+          `Authentication failed: ${message}`,
         );
     }
-  }
+  },
 );
 
 /**
@@ -465,18 +513,20 @@ router.get(
   async (req, res) => {
     res.setHeader(
       'Cache-Control',
-      'no-store, no-cache, must-revalidate'
+      'no-store, no-cache, must-revalidate',
     );
 
+    /**
+     * Authentication completely disabled.
+     */
     if (!env.AUTH_REQUIRED) {
       const authorization =
         getDevelopmentAuthorization(
-          WORKOS_ROLE_SLUGS.ADMIN
+          WORKOS_ROLE_SLUGS.ADMIN,
         );
 
       return res.json({
-        id:
-          'usr-dev-admin',
+        id: 'usr-dev-admin',
 
         email:
           'admin@localhost',
@@ -498,6 +548,9 @@ router.get(
       });
     }
 
+    /**
+     * Mock authentication enabled.
+     */
     if (env.USE_MOCK_AUTH) {
       const requestedRole =
         typeof req.headers[
@@ -510,12 +563,11 @@ router.get(
 
       const authorization =
         getDevelopmentAuthorization(
-          requestedRole
+          requestedRole,
         );
 
       return res.json({
-        id:
-          'usr-mock',
+        id: 'usr-mock',
 
         email:
           'mock@localhost',
@@ -590,9 +642,7 @@ router.get(
       if (
         !authResult.authenticated
       ) {
-        clearSessionCookie(
-          res
-        );
+        clearSessionCookie(res);
 
         return res
           .status(401)
@@ -609,26 +659,29 @@ router.get(
           });
       }
 
-      /*
-       * Authorization is determined from:
+      /**
+       * Authorization is resolved from:
        *
        * 1. WORKOS_ADMIN_EMAILS
-       * 2. The system_admin role in the WorkOS session
+       * 2. system_admin role from WorkOS
        * 3. Viewer fallback
        *
-       * No organization membership API is called.
+       * No WorkOS membership API is called here.
        */
       const authorization =
         resolveAuthorizationForUser(
           authResult.user.email,
           authResult.role,
-          authResult.roles
+          authResult.roles,
         );
 
       const fullName =
         [
-          authResult.user.firstName,
-          authResult.user.lastName,
+          authResult.user
+            .firstName,
+
+          authResult.user
+            .lastName,
         ]
           .filter(Boolean)
           .join(' ') ||
@@ -637,8 +690,7 @@ router.get(
           .split('@')[0];
 
       return res.json({
-        id:
-          authResult.user.id,
+        id: authResult.user.id,
 
         email:
           authResult.user.email,
@@ -661,12 +713,10 @@ router.get(
     } catch (error) {
       console.error(
         '[Auth] Failed to load current WorkOS user:',
-        error
+        error,
       );
 
-      clearSessionCookie(
-        res
-      );
+      clearSessionCookie(res);
 
       return res
         .status(401)
@@ -682,11 +732,11 @@ router.get(
           },
         });
     }
-  }
+  },
 );
 
 /**
- * CSRF token used for logout.
+ * Generate a CSRF token for logout.
  */
 router.get(
   '/api/auth/csrf-token',
@@ -694,21 +744,21 @@ router.get(
     const csrfToken =
       generateCsrfToken(
         req,
-        res
+        res,
       );
 
     return res.json({
       csrfToken,
     });
-  }
+  },
 );
 
 /**
- * Authentication configuration health check.
+ * Authentication health check.
  */
 router.get(
   '/api/health/auth',
-  (_req, res) => {
+  (req, res) => {
     return res.json({
       authMode:
         env.AUTH_REQUIRED
@@ -719,15 +769,17 @@ router.get(
         Boolean(
           env.WORKOS_API_KEY &&
           env.WORKOS_CLIENT_ID &&
-          env.WORKOS_COOKIE_PASSWORD
+          env.WORKOS_COOKIE_PASSWORD,
         ),
 
       redirectUri:
-        env.WORKOS_REDIRECT_URI,
+        getWorkOSRedirectUri(
+          req,
+        ),
 
       organizationConfigured:
         Boolean(
-          env.WORKOS_ORGANIZATION_ID
+          env.WORKOS_ORGANIZATION_ID,
         ),
 
       adminEmailConfigured:
@@ -742,12 +794,12 @@ router.get(
       useMockAuth:
         env.USE_MOCK_AUTH,
     });
-  }
+  },
 );
 
 /**
- * Clear the application session and end the WorkOS
- * hosted session when possible.
+ * Clear the application session and end the hosted
+ * WorkOS session where possible.
  */
 router.post(
   '/logout',
@@ -758,13 +810,13 @@ router.post(
         SESSION_COOKIE_NAME
       ];
 
-    /*
-     * Clear the application cookie first so the user
-     * cannot remain logged into the local application.
-     */
-    clearSessionCookie(
-      res
-    );
+    clearSessionCookie(res);
+
+    const applicationBaseUrl =
+      getApplicationBaseUrl(req);
+
+    const returnToUrl =
+      `${applicationBaseUrl}/login`;
 
     if (
       !env.AUTH_REQUIRED ||
@@ -774,8 +826,7 @@ router.post(
       !env.WORKOS_COOKIE_PASSWORD
     ) {
       return res.json({
-        logoutUrl:
-          `${env.APP_BASE_URL}/login`,
+        logoutUrl: returnToUrl,
       });
     }
 
@@ -789,9 +840,7 @@ router.post(
               env.WORKOS_COOKIE_PASSWORD,
           });
 
-      if (
-        authResult.authenticated
-      ) {
+      if (authResult.authenticated) {
         const logoutUrl =
           workos.userManagement
             .getLogoutUrl({
@@ -799,7 +848,7 @@ router.post(
                 authResult.sessionId,
 
               returnTo:
-                `${env.APP_BASE_URL}/login`,
+                returnToUrl,
             });
 
         return res.json({
@@ -809,15 +858,14 @@ router.post(
     } catch (error) {
       console.error(
         '[Auth] Could not generate WorkOS logout URL:',
-        error
+        error,
       );
     }
 
     return res.json({
-      logoutUrl:
-        `${env.APP_BASE_URL}/login`,
+      logoutUrl: returnToUrl,
     });
-  }
+  },
 );
 
 export {

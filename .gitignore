@@ -1,21 +1,24 @@
+# Dependencies and generated files
 node_modules/
-build/
 dist/
+build/
 coverage/
-.DS_Store
 *.log
-.env
-.gitignore
 
+# Local environment files
 .env
 .env.local
 .env.*.local
+
+# Temporary Cloud Run environment files
+cloudrun.env.yaml
+cloudrun.env.yml
 
 # Google Cloud credentials
 service-account.json
 *-service-account.json
 
-# Dependencies and build files
-node_modules/
-dist/
-.next/
+# Editor and operating system files
+.DS_Store
+.vscode/
+.idea/
