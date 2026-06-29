@@ -32,6 +32,7 @@ interface VesselDetailViewProps {
   zones: MaritimeZone[];
   selectedVesselId: string | null;
   onBack: () => void;
+  onSelectVessel: (vesselId: string) => void;
   onNavigate: (view: any) => void;
   onModifyAlertStatus?: (alertId: string, status: 'Resolved' | 'Under Review') => void;
   onAddAlert?: (vesselId: string, alertType: string, text: string) => void;
@@ -44,6 +45,7 @@ export default function VesselDetailView({
   movements,
   selectedVesselId,
   onBack,
+  onSelectVessel,
   onNavigate,
   onModifyAlertStatus,
   onAddAlert
@@ -92,6 +94,22 @@ export default function VesselDetailView({
   const vesselAlerts = useMemo(() => {
     return alerts.filter((a) => a.vessel_id === currentVessel.vessel_id);
   }, [alerts, currentVessel]);
+
+  const vesselMapZones = useMemo(() => {
+    const linkedZoneIds = new Set(
+      vesselAlerts
+        .map((alert) => alert.zone_id)
+        .filter((zoneId): zoneId is string => Boolean(zoneId))
+    );
+
+    const linkedZones = zones.filter((zone) => linkedZoneIds.has(zone.zone_id));
+
+    if (linkedZones.length > 0) {
+      return linkedZones.slice(0, 4);
+    }
+
+    return zones.filter((zone) => zone.risk_level === 'High').slice(0, 3);
+  }, [vesselAlerts, zones]);
 
   // AI intelligence explanation (dynamic lookup)
   const aiExplanation = useMemo(() => {
@@ -142,7 +160,7 @@ export default function VesselDetailView({
             </div>
             
             <p className="text-xs text-slate-500 mt-1">
-              Primary MMSI Identifier: <span className="font-mono text-cyan-400 font-semibold">{currentVessel.mmsi_hash}</span> // Class-Type: {currentVessel.vessel_type}
+              Primary MMSI Identifier: <span className="font-mono text-cyan-400 font-semibold">{currentVessel.mmsi_hash}</span> // Class-Type: {currentVessel.vessel_type} // Source: {currentVessel.source_dataset || 'BigQuery maritime tables / controlled mock AIS data'}
             </p>
           </div>
         </div>
@@ -154,7 +172,10 @@ export default function VesselDetailView({
           </label>
           <select
             value={selectedSpecId}
-            onChange={(e) => setSelectedSpecId(e.target.value)}
+            onChange={(e) => {
+              setSelectedSpecId(e.target.value);
+              onSelectVessel(e.target.value);
+            }}
             className="px-3 py-1.5 bg-slate-950 border border-slate-850 rounded-lg text-xs text-slate-300 focus:outline-none cursor-pointer"
           >
             {vessels.map((v) => (
@@ -258,15 +279,31 @@ export default function VesselDetailView({
               <span>LNG: {currentVessel.longitude.toFixed(5)}°E</span>
             </div>
             
-            <div className="h-44 overflow-hidden rounded-xl border border-slate-900 bg-slate-950 relative">
+            <div className="h-72 overflow-hidden rounded-xl border border-slate-800 bg-slate-950 relative shadow-inner shadow-slate-950/60">
               <VesselMap 
                 vessels={[currentVessel]} 
-                zones={zones} 
+                zones={vesselMapZones} 
                 alerts={alerts} 
                 movements={currentMovements}
                 selectedVesselId={currentVessel.vessel_id} 
                 height="100%" 
-                showAllTrails={false}
+                showAllTrails={true}
+                showAnimation={false}
+                compact
+                showProfileButton={false}
+                onSelectVessel={(id) => {
+                  setSelectedSpecId(id);
+                  onSelectVessel(id);
+                }}
+                onOpenVesselProfile={(id) => {
+                  setSelectedSpecId(id);
+                  onSelectVessel(id);
+                }}
+                onOpenIntelReport={(id) => {
+                  setSelectedSpecId(id);
+                  onSelectVessel(id);
+                  onNavigate('incident-reports');
+                }}
               />
             </div>
           </div>

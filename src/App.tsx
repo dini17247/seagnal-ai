@@ -1082,6 +1082,9 @@ function BaseAppLayout() {
                   'dashboard'
                 );
               }}
+              onSelectVessel={
+                setSelectedVesselId
+              }
               onNavigate={(
                 view
               ) =>
@@ -1131,6 +1134,9 @@ function BaseAppLayout() {
               }
               zones={
                 zones
+              }
+              selectedVesselId={
+                selectedVesselId
               }
               onSelectVessel={
                 handleVesselFocus

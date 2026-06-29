@@ -332,7 +332,11 @@ router.get('/map/vessels', requirePermission('map.view'), async (req: Authentica
       heading: v.heading,
       risk_level: v.risk_level,
       risk_score: v.risk_score,
-      status: v.status
+      status: v.status,
+      mmsi_hash: v.mmsi_hash,
+      flag_state: v.flag_state,
+      last_ais_time: v.last_ais_time,
+      source_dataset: v.source_dataset
     }));
     res.json({ success: true, data: mapFields });
   } catch (error) {

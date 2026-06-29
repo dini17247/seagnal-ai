@@ -333,24 +333,24 @@ export default function AlertManagementView({
                         <tr key={alert.alert_id} className="hover:bg-slate-900/10 transition duration-100">
                           
                           {/* Alarm ID */}
-                          <td className="py-3.5 px-4 font-mono text-[11px] font-bold text-slate-400">
+                          <td className="py-3.5 px-4 align-top font-mono text-[11px] font-bold text-slate-400">
                             {alert.alert_id}
                           </td>
 
                           {/* Vessel name */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-4 align-top min-w-[170px] text-left">
                             {targetVessel ? (
-                              <div className="min-w-0">
+                              <div className="min-w-0 text-left">
                                 <button
                                   onClick={() => {
                                     onSelectVessel(alert.vessel_id);
                                     onNavigate('vessels');
                                   }}
-                                  className="font-bold text-cyan-400 hover:underline hover:text-cyan-300 block cursor-pointer"
+                                  className="font-bold text-cyan-400 hover:underline hover:text-cyan-300 block w-full text-left leading-tight cursor-pointer"
                                 >
                                   {targetVessel.vessel_name}
                                 </button>
-                                <span className="text-[10px] text-slate-500 block truncate max-w-[130px]" title={targetVessel.vessel_type}>
+                                <span className="text-[10px] text-slate-500 block truncate max-w-[150px] text-left mt-0.5" title={targetVessel.vessel_type}>
                                   {targetVessel.vessel_type}
                                 </span>
                               </div>
@@ -360,17 +360,17 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Type */}
-                          <td className="py-3.5 px-4 font-semibold text-slate-100">
+                          <td className="py-3.5 px-4 align-top min-w-[150px] text-left font-semibold text-slate-100 leading-tight">
                             {alert.alert_type}
                           </td>
 
                           {/* Time */}
-                          <td className="py-3.5 px-4 font-mono text-[10px] text-slate-400">
+                          <td className="py-3.5 px-4 align-top font-mono text-[10px] text-slate-400">
                             {new Date(alert.alert_time).toLocaleString()}
                           </td>
 
                           {/* Severity */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-4 align-top">
                             <span className={`px-2 py-0.5 rounded text-[9px] font-mono uppercase font-bold tracking-wider ${
                               alert.severity === 'High' ? 'bg-rose-500/10 text-rose-450 border border-rose-500/20' :
                               alert.severity === 'Medium' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
@@ -381,7 +381,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Description / Action */}
-                          <td className="py-3.5 px-4 max-w-xs block xl:max-w-md">
+                          <td className="py-3.5 px-4 align-top max-w-xs xl:max-w-md">
                             <div className="font-semibold text-slate-200 truncate" title={alert.description}>
                               {alert.description}
                             </div>
@@ -391,7 +391,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Status badge */}
-                          <td className="py-3.5 px-4">
+                          <td className="py-3.5 px-4 align-top">
                             <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
                               alert.status === 'Active' ? 'bg-red-500/15 text-red-400' :
                               alert.status === 'Under Review' ? 'bg-amber-500/15 text-amber-400' :
@@ -407,7 +407,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Management Controls */}
-                          <td className="py-3.5 px-4 text-right">
+                          <td className="py-3.5 px-4 align-top text-right">
                             <div className="flex justify-end gap-1.5">
                               {alert.status === 'Active' && (
                                 <button

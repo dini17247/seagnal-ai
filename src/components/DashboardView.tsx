@@ -46,6 +46,49 @@ export default function DashboardView({
   const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [latestAlertsList, setLatestAlertsList] = useState<Alert[]>([]);
 
+  const dataSourceLabel = useMemo(() => {
+    const sources = Array.from(
+      new Set(
+        vessels
+          .map((vessel) => vessel.source_dataset)
+          .filter((source): source is string => Boolean(source && source.trim()))
+      )
+    );
+
+    return sources.length ? sources.slice(0, 3).join(', ') : 'BigQuery maritime tables / controlled mock AIS data';
+  }, [vessels]);
+
+  const dashboardZones = useMemo(() => {
+    const alertZoneIds = new Set(
+      alerts
+        .filter((alert) => alert.status !== 'Resolved' && alert.zone_id)
+        .map((alert) => alert.zone_id as string)
+    );
+
+    const alertLinkedZones = zones.filter((zone) => alertZoneIds.has(zone.zone_id));
+    const highRiskZones = zones.filter((zone) => zone.risk_level === 'High');
+    const merged = [...alertLinkedZones, ...highRiskZones].filter(
+      (zone, index, array) => array.findIndex((item) => item.zone_id === zone.zone_id) === index
+    );
+
+    return merged.slice(0, 8);
+  }, [alerts, zones]);
+
+  const dashboardMapVessels = useMemo(() => {
+    return [...vessels]
+      .sort((a, b) => {
+        const alertA = alerts.some((alert) => alert.vessel_id === a.vessel_id && alert.status !== 'Resolved') ? 1 : 0;
+        const alertB = alerts.some((alert) => alert.vessel_id === b.vessel_id && alert.status !== 'Resolved') ? 1 : 0;
+        return alertB - alertA || b.risk_score - a.risk_score;
+      })
+      .slice(0, 32);
+  }, [alerts, vessels]);
+
+  const dashboardMapMovements = useMemo(() => {
+    const visibleIds = new Set(dashboardMapVessels.map((vessel) => vessel.vessel_id));
+    return movements.filter((movement) => visibleIds.has(movement.vessel_id));
+  }, [dashboardMapVessels, movements]);
+
   const loadDashboardData = async () => {
     try {
       setLoading(true);
@@ -102,7 +145,7 @@ export default function DashboardView({
             Maritime Intelligence Dashboard
           </h2>
           <p className="text-slate-400 text-xs mt-0.5 font-medium">
-            Operational Sector: Strait of Malacca, West Malaysia Coasts • Royal Patrol Section 4
+            Operational Sector: Guam Demo Waters • Controlled Mock AIS Demo • Source: {dataSourceLabel}
           </p>
         </div>
         <div className="flex items-center gap-3 shrink-0">
@@ -152,30 +195,43 @@ export default function DashboardView({
       </div>
 
       {/* Main Map Visualization Snap panel */}
-      <div className="bg-slate-900 border border-slate-850 rounded-xl p-4 shadow-sm">
-        <div className="flex items-center justify-between mb-3 border-b border-slate-800 pb-2.5">
-          <h3 className="text-xs font-bold text-slate-300 uppercase tracking-widest flex items-center gap-2">
-            <MapPin className="w-4 h-4 text-cyan-400" />
-            Active Maritime Patrol Grid Feed – Malaysia Waters
-          </h3>
+      <div className="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-950 border border-slate-800/90 rounded-2xl p-5 shadow-xl shadow-slate-950/30">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4 border-b border-slate-800/80 pb-3">
+          <div>
+            <h3 className="text-xs font-extrabold text-slate-100 uppercase tracking-[0.22em] flex items-center gap-2">
+              <MapPin className="w-4 h-4 text-cyan-400" />
+              Maritime Map Overview
+            </h3>
+            <p className="text-[11px] text-slate-500 mt-1 font-mono">
+              BigQuery map preview uses priority focus mode: {dashboardMapVessels.length}/{vessels.length} vessels + {dashboardZones.length}/{zones.length} zones • Demo source: {dataSourceLabel}
+            </p>
+          </div>
           <button 
             onClick={() => onNavigate('map')}
-            className="text-xs text-cyan-400 hover:underline font-bold flex items-center gap-1 cursor-pointer"
+            className="text-xs text-cyan-300 hover:text-cyan-200 font-bold flex items-center gap-1.5 cursor-pointer border border-cyan-500/30 bg-cyan-500/10 px-3 py-2 rounded-lg transition"
           >
-            <span>Full GIS Map</span>
+            <span>Open Vessel Map</span>
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
-        <div className="h-[280px] rounded-lg overflow-hidden border border-slate-800/80">
+        <div className="h-[340px] rounded-xl overflow-hidden border border-slate-800/80 shadow-inner shadow-slate-950/70">
           <VesselMap 
-            vessels={vessels} 
-            zones={zones} 
+            vessels={dashboardMapVessels} 
+            zones={dashboardZones} 
             alerts={alerts} 
-            movements={movements}
-            height="280px"
+            movements={dashboardMapMovements}
+            height="340px"
+            showAllTrails={false}
             onSelectVessel={(id) => {
               onSelectVessel(id);
+            }}
+            onOpenVesselProfile={(id) => {
+              onSelectVessel(id);
               onNavigate('vessels');
+            }}
+            onOpenIntelReport={(id) => {
+              onSelectVessel(id);
+              onNavigate('incident-reports');
             }}
           />
         </div>

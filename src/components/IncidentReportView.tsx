@@ -27,6 +27,7 @@ interface IncidentReportViewProps {
   vessels: Vessel[];
   alerts: Alert[];
   zones: MaritimeZone[];
+  selectedVesselId?: string | null;
   onSelectVessel: (vesselId: string) => void;
   onNavigate: (view: any) => void;
 }
@@ -35,12 +36,13 @@ export default function IncidentReportView({
   vessels,
   alerts,
   zones,
+  selectedVesselId: focusedVesselId,
   onSelectVessel,
   onNavigate,
 }: IncidentReportViewProps) {
   // Let user pick which vessel they are drafting a report for
   const [selectedVesselId, setSelectedVesselId] = useState<string>(
-    vessels.find(v => v.vessel_id === 'V-002')?.vessel_id || vessels[0]?.vessel_id || ''
+    focusedVesselId || vessels.find(v => v.vessel_id === 'V-002')?.vessel_id || vessels[0]?.vessel_id || ''
   );
 
   const [subTab, setSubTab] = useState<'dossier' | 'archive'>('dossier');
@@ -103,6 +105,13 @@ export default function IncidentReportView({
   const [savingNote, setSavingNote] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [savedReports, setSavedReports] = useState<Record<string, { id: string; reportNumber: string }>>({});
+
+  useEffect(() => {
+    if (focusedVesselId && vessels.some((vessel) => vessel.vessel_id === focusedVesselId)) {
+      setSelectedVesselId(focusedVesselId);
+      setSubTab('dossier');
+    }
+  }, [focusedVesselId, vessels]);
 
   const currentVessel = useMemo(() => {
     return vessels.find((v) => v.vessel_id === selectedVesselId) || vessels[0];

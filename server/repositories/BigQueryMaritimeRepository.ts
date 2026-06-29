@@ -412,6 +412,17 @@ export class BigQueryMaritimeRepository {
                 row.width_m
             )
           : undefined,
+
+      source_dataset:
+        row.source_dataset != null ||
+        row.data_source != null ||
+        row.source != null
+          ? this.text(
+              row.source_dataset ??
+                row.data_source ??
+                row.source
+            )
+          : undefined,
     };
   }
 
@@ -700,6 +711,17 @@ export class BigQueryMaritimeRepository {
             row.geometry ??
             row.geography
         ),
+
+      source_dataset:
+        row.source_dataset != null ||
+        row.data_source != null ||
+        row.source != null
+          ? this.text(
+              row.source_dataset ??
+                row.data_source ??
+                row.source
+            )
+          : undefined,
     };
   }
 

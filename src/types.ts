@@ -18,6 +18,7 @@ export interface Vessel {
   eta?: string;
   length?: number;
   width?: number;
+  source_dataset?: string;
 }
 
 export interface Movement {
@@ -67,6 +68,7 @@ export interface MaritimeZone {
   zone_type: string;
   risk_level: RiskLevel;
   polygon_coordinates: [number, number][]; // [lat, lng] array
+  source_dataset?: string;
 }
 
 export interface PlatformSettings {
