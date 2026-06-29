@@ -26,13 +26,17 @@ function Import-DotEnv {
       continue
     }
 
-    $parts = $trimmed.Split("=", 2)
+    $parts = $trimmed -split "=", 2
 
-    $name =
-      $parts[0].Trim()
+    $name = $parts[0].Trim()
+    $value = $parts[1].Trim()
 
-    $value =
-      $parts[1].Trim()
+    if (
+      ($value.StartsWith('"') -and $value.EndsWith('"')) -or
+      ($value.StartsWith("'") -and $value.EndsWith("'"))
+    ) {
+      $value = $value.Substring(1, $value.Length - 2)
+    }
 
     [Environment]::SetEnvironmentVariable(
       $name,
@@ -48,17 +52,12 @@ function ConvertTo-YamlScalar {
     [string]$Value
   )
 
-  return "'" +
-    $Value.Replace(
-      "'",
-      "''"
-    ) +
-    "'"
+  return "'" + $Value.Replace("'", "''") + "'"
 }
 
-Import-DotEnv(
-  Join-Path $PSScriptRoot ".env"
-)
+Write-Host "Loading .env file..."
+
+Import-DotEnv -Path (Join-Path $PSScriptRoot ".env")
 
 $requiredVariables = @(
   "GCP_PROJECT_ID",
@@ -66,94 +65,71 @@ $requiredVariables = @(
   "WORKOS_CLIENT_ID",
   "WORKOS_COOKIE_PASSWORD",
   "CSRF_SECRET",
+  "WORKOS_ORGANIZATION_ID",
   "GEMINI_API_KEY"
 )
 
 $missingVariables = @()
 
-foreach (
-  $name in $requiredVariables
-) {
-  $value =
-    [Environment]::GetEnvironmentVariable(
-      $name,
-      "Process"
-    )
+foreach ($name in $requiredVariables) {
+  $value = [Environment]::GetEnvironmentVariable(
+    $name,
+    "Process"
+  )
 
-  if (
-    [string]::IsNullOrWhiteSpace(
-      $value
-    )
-  ) {
-    $missingVariables +=
-      $name
+  if ([string]::IsNullOrWhiteSpace($value)) {
+    $missingVariables += $name
   }
 }
 
-if (
-  $missingVariables.Count -gt 0
-) {
+if ($missingVariables.Count -gt 0) {
   throw "Missing values in .env: $($missingVariables -join ', ')"
 }
 
 $bigQueryDataset =
-  if (
-    $env:BIGQUERY_DATASET_ID
-  ) {
+  if ($env:BIGQUERY_DATASET_ID) {
     $env:BIGQUERY_DATASET_ID
   } else {
     "seagnal_ai"
   }
 
 $bigQueryLocation =
-  if (
-    $env:BIGQUERY_LOCATION
-  ) {
+  if ($env:BIGQUERY_LOCATION) {
     $env:BIGQUERY_LOCATION
   } else {
     "US"
   }
 
 $bigQueryVesselsTable =
-  if (
-    $env:BIGQUERY_VESSELS_TABLE
-  ) {
+  if ($env:BIGQUERY_VESSELS_TABLE) {
     $env:BIGQUERY_VESSELS_TABLE
   } else {
     "vessels"
   }
 
 $bigQueryMovementsTable =
-  if (
-    $env:BIGQUERY_MOVEMENTS_TABLE
-  ) {
+  if ($env:BIGQUERY_MOVEMENTS_TABLE) {
     $env:BIGQUERY_MOVEMENTS_TABLE
   } else {
     "vessel_movements"
   }
 
 $bigQueryAlertsTable =
-  if (
-    $env:BIGQUERY_ALERTS_TABLE
-  ) {
+  if ($env:BIGQUERY_ALERTS_TABLE) {
     $env:BIGQUERY_ALERTS_TABLE
   } else {
     "alerts"
   }
 
 $bigQueryZonesTable =
-  if (
-    $env:BIGQUERY_ZONES_TABLE
-  ) {
+  if ($env:BIGQUERY_ZONES_TABLE) {
     $env:BIGQUERY_ZONES_TABLE
   } else {
     "maritime_zones"
   }
 
 $geminiModel =
-  if (
-    $env:GEMINI_MODEL
-  ) {
+  if ($env:GEMINI_MODEL) {
     $env:GEMINI_MODEL
   } else {
     "gemini-3.5-flash"
@@ -161,65 +137,45 @@ $geminiModel =
 
 $cloudRunVariables =
   [ordered]@{
-    NODE_ENV =
-      "production"
+    NODE_ENV = "production"
 
-    USE_MOCK_DATA =
-      "false"
+    USE_MOCK_DATA = "false"
 
-    AUTH_REQUIRED =
-      "true"
+    AUTH_REQUIRED = "true"
 
-    USE_MOCK_AUTH =
-      "false"
+    USE_MOCK_AUTH = "false"
 
-    CLOUD_SQL_ENABLED =
-      "false"
+    CLOUD_SQL_ENABLED = "false"
 
-    GCP_PROJECT_ID =
-      $ProjectId
+    GCP_PROJECT_ID = $ProjectId
 
-    BIGQUERY_DATASET_ID =
-      $bigQueryDataset
+    BIGQUERY_DATASET_ID = $bigQueryDataset
 
-    BIGQUERY_LOCATION =
-      $bigQueryLocation
+    BIGQUERY_LOCATION = $bigQueryLocation
 
-    BIGQUERY_VESSELS_TABLE =
-      $bigQueryVesselsTable
+    BIGQUERY_VESSELS_TABLE = $bigQueryVesselsTable
 
-    BIGQUERY_MOVEMENTS_TABLE =
-      $bigQueryMovementsTable
+    BIGQUERY_MOVEMENTS_TABLE = $bigQueryMovementsTable
 
-    BIGQUERY_ALERTS_TABLE =
-      $bigQueryAlertsTable
+    BIGQUERY_ALERTS_TABLE = $bigQueryAlertsTable
 
-    BIGQUERY_ZONES_TABLE =
-      $bigQueryZonesTable
+    BIGQUERY_ZONES_TABLE = $bigQueryZonesTable
 
-    WORKOS_API_KEY =
-      $env:WORKOS_API_KEY
+    WORKOS_API_KEY = $env:WORKOS_API_KEY
 
-    WORKOS_CLIENT_ID =
-      $env:WORKOS_CLIENT_ID
+    WORKOS_CLIENT_ID = $env:WORKOS_CLIENT_ID
 
-    WORKOS_COOKIE_PASSWORD =
-      $env:WORKOS_COOKIE_PASSWORD
+    WORKOS_COOKIE_PASSWORD = $env:WORKOS_COOKIE_PASSWORD
 
-    CSRF_SECRET =
-      $env:CSRF_SECRET
+    CSRF_SECRET = $env:CSRF_SECRET
 
-    WORKOS_ORGANIZATION_ID =
-      $env:WORKOS_ORGANIZATION_ID
+    WORKOS_ORGANIZATION_ID = $env:WORKOS_ORGANIZATION_ID
 
-    WORKOS_ADMIN_EMAILS =
-      $env:WORKOS_ADMIN_EMAILS
+    WORKOS_ADMIN_EMAILS = $env:WORKOS_ADMIN_EMAILS
 
-    GEMINI_API_KEY =
-      $env:GEMINI_API_KEY
+    GEMINI_API_KEY = $env:GEMINI_API_KEY
 
-    GEMINI_MODEL =
-      $geminiModel
+    GEMINI_MODEL = $geminiModel
   }
 
 $tempEnvFile =
@@ -229,10 +185,7 @@ $tempEnvFile =
 
 try {
   $yamlLines =
-    foreach (
-      $entry in
-        $cloudRunVariables.GetEnumerator()
-    ) {
+    foreach ($entry in $cloudRunVariables.GetEnumerator()) {
       if (
         -not [string]::IsNullOrWhiteSpace(
           [string]$entry.Value
@@ -247,13 +200,27 @@ try {
     -Value $yamlLines `
     -Encoding utf8
 
+  Write-Host "Setting Google Cloud project..."
   & gcloud config set project $ProjectId
 
-  if (
-    $LASTEXITCODE -ne 0
-  ) {
+  if ($LASTEXITCODE -ne 0) {
     throw "Could not select Google Cloud project $ProjectId"
   }
+
+  Write-Host "Checking local production build..."
+  & npm install
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "npm install failed."
+  }
+
+  & npm run build
+
+  if ($LASTEXITCODE -ne 0) {
+    throw "npm run build failed."
+  }
+
+  Write-Host "Deploying to Cloud Run..."
 
   $deployArguments = @(
     "run",
@@ -273,9 +240,7 @@ try {
 
   & gcloud @deployArguments
 
-  if (
-    $LASTEXITCODE -ne 0
-  ) {
+  if ($LASTEXITCODE -ne 0) {
     throw "Cloud Run deployment failed. Read the error shown above."
   }
 
@@ -289,31 +254,23 @@ try {
     ).Trim()
 
   Write-Host ""
-  Write-Host `
-    "Deployment completed." `
-    -ForegroundColor Green
-
-  Write-Host `
-    "Application URL: $serviceUrl"
-
-  Write-Host `
-    "WorkOS callback to add: $serviceUrl/callback" `
-    -ForegroundColor Cyan
-
-  Write-Host `
-    "WorkOS sign-out return URL: $serviceUrl/login" `
-    -ForegroundColor Cyan
-
-  Write-Host `
-    "Auth health check: $serviceUrl/api/health/auth"
-
-  Write-Host `
-    "BigQuery health check: $serviceUrl/api/health/bigquery"
+  Write-Host "Deployment completed." -ForegroundColor Green
+  Write-Host "Application URL: $serviceUrl" -ForegroundColor Green
+  Write-Host ""
+  Write-Host "Add this in WorkOS Redirect URI:" -ForegroundColor Cyan
+  Write-Host "$serviceUrl/callback" -ForegroundColor Cyan
+  Write-Host ""
+  Write-Host "Add this in WorkOS Sign-out Return URI:" -ForegroundColor Cyan
+  Write-Host "$serviceUrl/login" -ForegroundColor Cyan
+  Write-Host ""
+  Write-Host "Auth health check:"
+  Write-Host "$serviceUrl/api/health/auth"
+  Write-Host ""
+  Write-Host "BigQuery health check:"
+  Write-Host "$serviceUrl/api/health/bigquery"
 }
 finally {
-  if (
-    Test-Path $tempEnvFile
-  ) {
+  if (Test-Path $tempEnvFile) {
     Remove-Item `
       $tempEnvFile `
       -Force
