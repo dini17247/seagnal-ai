@@ -329,7 +329,7 @@ export default function PrintableIncidentReport({
           </div>
         </section>
 
-        <div className="report-page-break" />
+        {/* <div className="report-page-break" /> */}
 
         <ActionGroup number="09" title="Immediate operational actions" items={report.recommended_actions.immediate} />
         <ActionGroup number="10" title="Monitoring plan" items={report.recommended_actions.monitoring} />
@@ -351,7 +351,7 @@ export default function PrintableIncidentReport({
           <p>{report.analyst_conclusion}</p>
         </section>
 
-        <section className="report-section report-appendix report-page-break-before">
+        <section className="report-section report-appendix">
           <div className="report-section-title">
             <span>A</span>
             <h2>Selected alert evidence appendix</h2>

@@ -145,7 +145,7 @@ $cloudRunVariables =
 
     USE_MOCK_AUTH = "false"
 
-    CLOUD_SQL_ENABLED = "false"
+    CLOUD_SQL_ENABLED = "true"
 
     GCP_PROJECT_ID = $ProjectId
 
@@ -176,6 +176,14 @@ $cloudRunVariables =
     GEMINI_API_KEY = $env:GEMINI_API_KEY
 
     GEMINI_MODEL = $geminiModel
+
+    CLOUD_SQL_CONNECTION_NAME = $env:CLOUD_SQL_CONNECTION_NAME
+
+    CLOUD_SQL_DATABASE = $env:CLOUD_SQL_DATABASE
+
+    CLOUD_SQL_USER = $env:CLOUD_SQL_USER
+
+    CLOUD_SQL_PASSWORD = $env:CLOUD_SQL_PASSWORD
   }
 
 $tempEnvFile =
@@ -237,6 +245,10 @@ try {
     "--max-instances=3",
     "--timeout=300"
   )
+
+  if (-not [string]::IsNullOrWhiteSpace($env:CLOUD_SQL_INSTANCE_CONNECTION_NAME)) {
+    $deployArguments += "--add-cloudsql-instances=$($env:CLOUD_SQL_INSTANCE_CONNECTION_NAME)"
+  }
 
   & gcloud @deployArguments
 

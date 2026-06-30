@@ -555,6 +555,35 @@ router.patch('/alerts/:alertId/resolve', requirePermission('alerts.resolve'), re
 
 // --- 7. INCIDENT REPORTS ENDPOINTS ---
 
+function writeReportAuditSilently(input: {
+  user_id?: string;
+  user_email?: string;
+  action_type: string;
+  resource_type: string;
+  resource_id?: string;
+  action_description: string;
+  previous_value?: unknown;
+  new_value?: unknown;
+}) {
+  void auditLogRepo
+    .create({
+      user_id: input.user_id,
+      user_email: input.user_email,
+      action_type: input.action_type,
+      resource_type: input.resource_type,
+      resource_id: input.resource_id,
+      action_description: input.action_description,
+      previous_value: input.previous_value,
+      new_value: input.new_value,
+    })
+    .catch((error) => {
+      console.warn(
+        '[Audit Log skipped for report action]',
+        error,
+      );
+    });
+}
+
 router.get('/reports', requirePermission('reports.view'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const list = await reportRepo.listReports();
@@ -567,9 +596,17 @@ router.get('/reports', requirePermission('reports.view'), async (req: Authentica
 router.get('/reports/:reportId', requirePermission('reports.view'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const item = await reportRepo.findById(req.params.reportId);
+
     if (!item) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Incident report not found.' } });
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Incident report not found.',
+        },
+      });
     }
+
     res.json({ success: true, data: item });
   } catch (error) {
     next(error);
@@ -579,32 +616,59 @@ router.get('/reports/:reportId', requirePermission('reports.view'), async (req: 
 router.post('/reports', requirePermission('reports.create'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const author = req.user;
-    const { vessel_id, primary_alert_id, officer_notes, ai_summary, final_recommendation, alert_ids } = req.body;
+
+    const {
+      vessel_id,
+      primary_alert_id,
+      officer_notes,
+      ai_summary,
+      final_recommendation,
+      alert_ids,
+    } = req.body;
 
     if (!vessel_id) {
-      return res.status(400).json({ success: false, error: { code: 'INVALID_INPUT', message: 'Vessel ID is required.' } });
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_INPUT',
+          message: 'Vessel ID is required.',
+        },
+      });
     }
 
     const report = await reportRepo.create({
       vessel_id,
       primary_alert_id,
-      created_by_user_id: author?.user_id || 'usr-003',
+      created_by_user_id:
+        author?.user_id || 'system-user',
+      created_by_auth_uid:
+        author?.auth_uid ||
+        author?.user_id ||
+        'system-user',
+      created_by_email: author?.email,
+      created_by_full_name: author?.full_name,
+      created_by_role: author?.role,
+      created_by_organization:
+        author?.organization,
       officer_notes,
       ai_summary,
       final_recommendation,
-      alert_ids
+      alert_ids,
     });
 
-    await auditLogRepo.create({
+    writeReportAuditSilently({
       user_id: author?.user_id,
       user_email: author?.email,
       action_type: 'Report Created',
       resource_type: 'Incident Report',
       resource_id: report.id,
-      action_description: `Incident Report dossier draft ${report.report_number} initialized for Vessel ${vessel_id}.`
+      action_description: `Incident Report dossier draft ${report.report_number} initialized for Vessel ${vessel_id}.`,
     });
 
-    res.json({ success: true, data: report });
+    res.json({
+      success: true,
+      data: report,
+    });
   } catch (error) {
     next(error);
   }
@@ -613,35 +677,64 @@ router.post('/reports', requirePermission('reports.create'), async (req: Authent
 router.put('/reports/:reportId', requirePermission('reports.edit'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const author = req.user;
-    const { officer_notes, ai_summary, final_recommendation, report_status, alert_ids } = req.body;
 
-    const current = await reportRepo.findById(req.params.reportId);
-    if (!current) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Incident Report not found.' } });
-    }
-
-    if (current.report_status === 'Finalized') {
-      return res.status(400).json({ success: false, error: { code: 'REPORT_FINALIZED', message: 'Cannot edit an already finalized analytical dossier.' } });
-    }
-
-    const updated = await reportRepo.update(req.params.reportId, {
+    const {
       officer_notes,
       ai_summary,
       final_recommendation,
       report_status,
-      alert_ids
-    });
+      alert_ids,
+    } = req.body;
 
-    await auditLogRepo.create({
+    const current = await reportRepo.findById(
+      req.params.reportId,
+    );
+
+    if (!current) {
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Incident Report not found.',
+        },
+      });
+    }
+
+    if (current.report_status === 'Finalized') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'REPORT_FINALIZED',
+          message:
+            'Cannot edit an already finalized analytical dossier.',
+        },
+      });
+    }
+
+    const updated = await reportRepo.update(
+      req.params.reportId,
+      {
+        officer_notes,
+        ai_summary,
+        final_recommendation,
+        report_status,
+        alert_ids,
+      },
+    );
+
+    writeReportAuditSilently({
       user_id: author?.user_id,
       user_email: author?.email,
       action_type: 'Report Updated',
       resource_type: 'Incident Report',
       resource_id: updated.id,
-      action_description: `Incident dossier ${updated.report_number} modified by analyst.`
+      action_description: `Incident dossier ${updated.report_number} modified by analyst.`,
     });
 
-    res.json({ success: true, data: updated });
+    res.json({
+      success: true,
+      data: updated,
+    });
   } catch (error) {
     next(error);
   }
@@ -650,27 +743,45 @@ router.put('/reports/:reportId', requirePermission('reports.edit'), async (req: 
 router.post('/reports/:reportId/finalize', requirePermission('reports.finalize'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const author = req.user;
-    const current = await reportRepo.findById(req.params.reportId);
+
+    const current = await reportRepo.findById(
+      req.params.reportId,
+    );
+
     if (!current) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Incident dossier not found.' } });
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Incident dossier not found.',
+        },
+      });
     }
 
-    const updated = await reportRepo.update(req.params.reportId, {
-      report_status: 'Finalized',
-      finalized_by_user_id: author?.user_id,
-      finalized_at: new Date().toISOString()
-    });
+    const updated = await reportRepo.update(
+      req.params.reportId,
+      {
+        report_status: 'Finalized',
+        finalized_by_user_id:
+          author?.user_id ||
+          current.created_by_user_id,
+        finalized_at: new Date().toISOString(),
+      },
+    );
 
-    await auditLogRepo.create({
+    writeReportAuditSilently({
       user_id: author?.user_id,
       user_email: author?.email,
       action_type: 'Report Finalized',
       resource_type: 'Incident Report',
       resource_id: updated.id,
-      action_description: `Incident report ${updated.report_number} signed and closed.`
+      action_description: `Incident report ${updated.report_number} signed and closed.`,
     });
 
-    res.json({ success: true, data: updated });
+    res.json({
+      success: true,
+      data: updated,
+    });
   } catch (error) {
     next(error);
   }
@@ -679,27 +790,37 @@ router.post('/reports/:reportId/finalize', requirePermission('reports.finalize')
 router.post('/reports/:reportId/export', requirePermission('reports.export'), async (req: AuthenticatedRequest, res, next) => {
   try {
     const author = req.user;
-    const current = await reportRepo.findById(req.params.reportId);
+
+    const current = await reportRepo.findById(
+      req.params.reportId,
+    );
+
     if (!current) {
-      return res.status(404).json({ success: false, error: { code: 'NOT_FOUND', message: 'Dossier not found for export.' } });
+      return res.status(404).json({
+        success: false,
+        error: {
+          code: 'NOT_FOUND',
+          message: 'Dossier not found for export.',
+        },
+      });
     }
 
-    await auditLogRepo.create({
+    writeReportAuditSilently({
       user_id: author?.user_id,
       user_email: author?.email,
-      action_type: 'Report Exported',
+      action_type: 'Report Printed',
       resource_type: 'Incident Report',
       resource_id: current.id,
-      action_description: `Dossier compilation package ${current.report_number} compiled and exported.`
+      action_description: `Dossier ${current.report_number} was opened for print/save PDF.`,
     });
 
-    res.json({ 
-      success: true, 
-      data: { 
+    res.json({
+      success: true,
+      data: {
         export_time: new Date().toISOString(),
         download_url: `/api/reports/${current.id}/download-pdf`,
-        formatted_filename: `${current.report_number}_SEAGNAL_DOSSIER.pdf` 
-      } 
+        formatted_filename: `${current.report_number}_SEAGNAL_DOSSIER.pdf`,
+      },
     });
   } catch (error) {
     next(error);
