@@ -30,7 +30,6 @@ import SettingsView from './components/SettingsView';
 import UserManagementView from './components/UserManagementView';
 import AuditLogsView from './components/AuditLogsView';
 
-// Services
 import {
   vesselService,
 } from './services/vesselService';
@@ -43,7 +42,6 @@ import {
   settingsService,
 } from './services/settingsService';
 
-// Authentication and authorization
 import {
   AuthProvider,
   useAuth,
@@ -132,7 +130,6 @@ function BaseAppLayout() {
       null
     );
 
-  // Cross-view selection hooks
   const [
     selectedVesselId,
     setSelectedVesselId,
@@ -141,18 +138,11 @@ function BaseAppLayout() {
       null
     );
 
-  // Reference to main scrolling layout container
   const mainRef =
     useRef<HTMLElement>(
       null
     );
 
-  /*
-   * Authorization values used by this page.
-   *
-   * Only system_admin receives these permissions
-   * from the authentication backend.
-   */
   const canViewSettings =
     hasPermission(
       'settings.view'
@@ -168,7 +158,6 @@ function BaseAppLayout() {
       'audit_logs.view'
     );
 
-  // Sync state data from Express API
   const syncPlatformData =
     async () => {
       if (!isAuthenticated) {
@@ -179,13 +168,6 @@ function BaseAppLayout() {
         setLoadingFeeds(true);
         setDataError(null);
 
-        /*
-         * Viewers must not request the protected
-         * settings endpoint.
-         *
-         * They use the frontend defaults while
-         * administrators retrieve the saved settings.
-         */
         const settingsRequest =
           canViewSettings
             ? settingsService
@@ -282,13 +264,6 @@ function BaseAppLayout() {
     }
   }, [currentView]);
 
-  /*
-   * Return a user to the dashboard if their role
-   * does not allow access to an administrator page.
-   *
-   * This protects against stale navigation state,
-   * bookmarked state, or role changes.
-   */
   useEffect(() => {
     const unauthorizedSettings =
       currentView ===
@@ -321,7 +296,6 @@ function BaseAppLayout() {
     canViewAuditLogs,
   ]);
 
-  // Theme toggle state
   const [
     isLightMode,
     setIsLightMode,
@@ -362,7 +336,6 @@ function BaseAppLayout() {
     }
   }, [isLightMode]);
 
-  // UTC Operation room digital timer
   const [
     currentTimeUTC,
     setCurrentTimeUTC,
@@ -395,7 +368,6 @@ function BaseAppLayout() {
       );
   }, []);
 
-  // Modify Alert Status with Server side endpoints
   const handleModifyAlertStatus =
     async (
       alertId: string,
@@ -459,7 +431,6 @@ function BaseAppLayout() {
           );
         }
 
-        // Re-synchronize platform state
         await syncPlatformData();
       } catch (err) {
         console.error(
@@ -467,7 +438,6 @@ function BaseAppLayout() {
           err
         );
 
-        // Fallback behavior for standalone mode
         setAlerts(
           (
             prevAlerts
@@ -566,13 +536,10 @@ function BaseAppLayout() {
 
                       return {
                         ...vessel,
-
                         risk_score:
                           newScore,
-
                         risk_level:
                           newLevel,
-
                         status:
                           'Telemetry verified. Anomaly cleared.',
                       };
@@ -597,10 +564,6 @@ function BaseAppLayout() {
       newSettings:
         PlatformSettings
     ) => {
-      /*
-       * Frontend authorization check.
-       * The backend must also enforce settings.update.
-       */
       if (
         !hasPermission(
           'settings.update'
@@ -703,7 +666,6 @@ function BaseAppLayout() {
           return {
             title:
               'Operational Overview',
-
             desc:
               'Real-time telemetry feeds and anomaly scoring boards.',
           };
@@ -712,7 +674,6 @@ function BaseAppLayout() {
           return {
             title:
               'Tactical GIS Map radar corridor',
-
             desc:
               'Active shipping vessel tracks, restricted military geofences, and vector coordinates.',
           };
@@ -721,7 +682,6 @@ function BaseAppLayout() {
           return {
             title:
               'Vessel Intel specs file',
-
             desc:
               'MMSI registries, historical area trends, and AI telemetry explanation dossiers.',
           };
@@ -730,7 +690,6 @@ function BaseAppLayout() {
           return {
             title:
               'Platform Anomaly Alert center',
-
             desc:
               'Comprehensive list of active AIS intervals and geofencing violations.',
           };
@@ -739,7 +698,6 @@ function BaseAppLayout() {
           return {
             title:
               'Coast Guard Prosecution summaries',
-
             desc:
               'Declassified tactical brief compilations with customizable duty commander journals.',
           };
@@ -748,7 +706,6 @@ function BaseAppLayout() {
           return {
             title:
               'Security Command settings',
-
             desc:
               'Tune kinematics limits, scoring bounds, and geofence guidelines.',
           };
@@ -757,7 +714,6 @@ function BaseAppLayout() {
           return {
             title:
               'Security User Directory',
-
             desc:
               'Credential profiles, permission levels, and secure officer registration indices.',
           };
@@ -766,7 +722,6 @@ function BaseAppLayout() {
           return {
             title:
               'Security audit logs trail',
-
             desc:
               'Trace administrative signups, officer edits, and tactical interdicts.',
           };
@@ -775,7 +730,6 @@ function BaseAppLayout() {
           return {
             title:
               'Seagnal AI Terminal',
-
             desc:
               'Coastal Maritime Intelligence & Anomaly Detection Dashboard.',
           };
@@ -790,7 +744,6 @@ function BaseAppLayout() {
     );
   }
 
-  // Show a clear error state
   if (dataError) {
     return (
       <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center font-sans px-4">
@@ -828,7 +781,6 @@ function BaseAppLayout() {
 
   return (
     <div className="flex h-screen bg-slate-950 text-slate-200 overflow-hidden font-sans">
-      {/* Main navigation */}
       <Sidebar
         currentView={
           currentView
@@ -836,10 +788,6 @@ function BaseAppLayout() {
         onNavigate={(
           view
         ) => {
-          /*
-           * Additional frontend authorization before
-           * switching into administrator views.
-           */
           if (
             view ===
               'settings' &&
@@ -883,14 +831,9 @@ function BaseAppLayout() {
             view
           );
 
-          if (
-            view !==
-            'vessels'
-          ) {
-            setSelectedVesselId(
-              null
-            );
-          }
+          setSelectedVesselId(
+            null
+          );
         }}
         unresolvedAlertsCount={
           alerts.filter(
@@ -901,7 +844,6 @@ function BaseAppLayout() {
         }
       />
 
-      {/* Main terminal panel */}
       <div className="flex-1 flex flex-col min-w-0 h-full relative overflow-hidden bg-slate-950/20">
         <header className="h-16 border-b border-slate-900 bg-slate-950 flex items-center justify-between px-6 shrink-0 relative z-45">
           <div className="flex items-center gap-2">
@@ -1151,7 +1093,6 @@ function BaseAppLayout() {
             />
           )}
 
-          {/* Administrator-only Settings */}
           {currentView ===
             'settings' && (
             <PermissionGuard
@@ -1171,7 +1112,6 @@ function BaseAppLayout() {
             </PermissionGuard>
           )}
 
-          {/* Administrator-only User Directory */}
           {currentView ===
             'user-management' && (
             <PermissionGuard
@@ -1184,7 +1124,6 @@ function BaseAppLayout() {
             </PermissionGuard>
           )}
 
-          {/* Administrator-only Audit Logs */}
           {currentView ===
             'audit-logs' && (
             <PermissionGuard
