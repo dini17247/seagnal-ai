@@ -63,6 +63,7 @@ export default function VesselMap({
   const onOpenVesselProfileRef = useRef(onOpenVesselProfile);
 
   const [mapReady, setMapReady] = useState(false);
+  const [showMapLegend, setShowMapLegend] = useState(false);
 
   useEffect(() => {
     onSelectVesselRef.current = onSelectVessel;
@@ -237,31 +238,72 @@ export default function VesselMap({
       return directions[index];
     }
 
+    const shouldReduceMarkerDetail = vessels.length > 400;
+    const shouldUseSmallerMarkers = vessels.length > 120 || compact;
+
     const buildVesselIcon = (vessel: Vessel, heading = vessel.heading) => {
       const isSelected = vessel.vessel_id === selectedVesselId;
       const color = getColorByRisk(vessel.risk_level);
       const isHighRisk = vessel.risk_level === 'High';
       const vesselStatus = vessel.status?.toLowerCase() ?? '';
       const hasAisGap = vesselStatus.includes('gap') || vesselStatus.includes('inactive');
+
       const hasActiveAlert = alerts.some(
-        (alert) => alert.vessel_id === vessel.vessel_id && alert.status === 'Active'
+        (alert) =>
+          alert.vessel_id === vessel.vessel_id &&
+          alert.status !== 'Resolved'
       );
 
-      const markerSize = compact ? 30 : 34;
-      const svgSize = isSelected ? (compact ? 20 : 22) : compact ? 15 : 17;
+      const markerSize = isSelected
+        ? compact
+          ? 30
+          : 34
+        : shouldUseSmallerMarkers
+          ? compact
+            ? 24
+            : 26
+          : compact
+            ? 28
+            : 32;
+
+      const svgSize = isSelected
+        ? compact
+          ? 20
+          : 22
+        : shouldUseSmallerMarkers
+          ? compact
+            ? 13
+            : 14
+          : compact
+            ? 15
+            : 17;
+
+      const showStatusBadge = isSelected || !shouldReduceMarkerDetail;
       const badgeSizeClass = compact ? 'w-3.5 h-3.5 text-[7px]' : 'w-4 h-4 text-[8px]';
+
+      const ringInset = shouldUseSmallerMarkers ? 3 : 2;
+      const ringIsStrong = hasActiveAlert || isHighRisk;
+      const ringBorderAlpha = ringIsStrong ? 'dd' : '88';
+      const ringBackgroundAlpha = ringIsStrong ? '22' : '10';
+      const ringShadowAlpha = ringIsStrong ? '48' : '24';
+      const ringShadowSize = ringIsStrong ? '10px' : '6px';
 
       const markerHtml = `
         <div class="relative flex items-center justify-center vessel-marker-motion" style="width:${markerSize}px;height:${markerSize}px;">
           ${
             isSelected
               ? `<div class="absolute inset-0 rounded-full border-2 border-white/90 shadow-[0_0_18px_rgba(255,255,255,0.45)]"></div>`
-              : hasActiveAlert
-                ? `<div class="absolute inset-1.5 rounded-full border border-rose-500/80 bg-rose-500/10"></div>`
-                : isHighRisk
-                  ? `<div class="absolute inset-2 rounded-full border border-rose-500/50 bg-rose-500/5"></div>`
-                  : ''
+              : `<div 
+                  class="absolute rounded-full border"
+                  style="
+                    inset:${ringInset}px;
+                    border-color:${color}${ringBorderAlpha};
+                    background:${color}${ringBackgroundAlpha};
+                    box-shadow:0 0 ${ringShadowSize} ${color}${ringShadowAlpha};
+                  "
+                ></div>`
           }
+
           <div 
             class="flex items-center justify-center transition-transform duration-700 ease-linear drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)]"
             style="transform: rotate(${heading}deg);"
@@ -282,10 +324,11 @@ export default function VesselMap({
               />
             </svg>
           </div>
+
           ${
-            hasAisGap
+            showStatusBadge && hasAisGap
               ? `<div class="absolute -top-1 -right-1 bg-amber-500 text-[7px] font-black text-slate-950 rounded-full px-1 py-0.5 shadow-sm border border-slate-950">G</div>`
-              : isHighRisk
+              : showStatusBadge && hasActiveAlert
                 ? `<div class="absolute -top-1 -right-1 bg-rose-600 font-black text-white rounded-full ${badgeSizeClass} flex items-center justify-center shadow-sm border border-slate-950">!</div>`
                 : ''
           }
@@ -624,9 +667,80 @@ export default function VesselMap({
 
   return (
     <div
-      className="relative overflow-hidden rounded-xl border border-slate-800/80 bg-slate-950 shadow-2xl shadow-slate-950/40 group"
+      className="relative h-full w-full overflow-hidden"
       style={{ height, width: '100%' }}
     >
+      <style>{`
+        .seagnal-map .leaflet-top.leaflet-left {
+          top: 70px !important;
+          left: 16px !important;
+        }
+
+        .seagnal-map.seagnal-map-compact .leaflet-top.leaflet-left {
+          top: 58px !important;
+          left: 8px !important;
+        }
+
+        .seagnal-map .leaflet-control-zoom {
+          margin: 0 !important;
+          border: 1px solid rgba(51, 65, 85, 0.8) !important;
+          border-radius: 12px !important;
+          overflow: hidden !important;
+          box-shadow: 0 18px 35px rgba(2, 6, 23, 0.45) !important;
+        }
+
+        .seagnal-map .leaflet-control-zoom a {
+          width: 40px !important;
+          height: 40px !important;
+          line-height: 38px !important;
+          background: rgba(15, 23, 42, 0.95) !important;
+          color: #cbd5e1 !important;
+          border-bottom: 1px solid rgba(51, 65, 85, 0.8) !important;
+          font-size: 22px !important;
+          font-weight: 500 !important;
+        }
+
+        .seagnal-map.seagnal-map-compact .leaflet-control-zoom a {
+          width: 36px !important;
+          height: 36px !important;
+          line-height: 34px !important;
+        }
+
+        .seagnal-map .leaflet-control-zoom a:hover {
+          background: rgba(15, 23, 42, 1) !important;
+          color: #67e8f9 !important;
+        }
+
+        .seagnal-map .leaflet-control-attribution {
+          background: rgba(15, 23, 42, 0.72) !important;
+          color: rgba(148, 163, 184, 0.72) !important;
+          border-radius: 8px 0 0 0 !important;
+          font-size: 9px !important;
+        }
+
+        .seagnal-map .leaflet-control-attribution a {
+          color: rgba(125, 211, 252, 0.75) !important;
+        }
+
+        .seagnal-map .leaflet-popup-pane {
+          z-index: 1200 !important;
+        }
+
+        .seagnal-map .leaflet-popup {
+          z-index: 1200 !important;
+        }
+
+        .seagnal-map .custom-tactical-popup {
+          z-index: 1200 !important;
+        }
+      `}</style>
+
+      <div
+        id="map-container"
+        ref={mapContainerRef}
+        className={`seagnal-map ${compact ? 'seagnal-map-compact' : ''} absolute inset-0 z-10 focus:outline-none`}
+      />
+
       <button
         type="button"
         onClick={() => {
@@ -634,61 +748,84 @@ export default function VesselMap({
           lastFitSignatureRef.current = null;
           fitMapToCurrentData(true);
         }}
-        className={`absolute z-[1000] rounded-lg border border-slate-700/80 bg-slate-950/90 font-extrabold uppercase tracking-wider text-slate-300 shadow-lg shadow-slate-950/40 backdrop-blur-md transition hover:border-cyan-500/60 hover:text-cyan-300 ${
+        className={`absolute z-[1100] flex items-center justify-center border border-slate-700/80 bg-slate-950/95 text-slate-300 shadow-lg shadow-slate-950/40 backdrop-blur-md transition hover:border-cyan-500/60 hover:text-cyan-300 ${
           compact
-            ? 'top-2 left-2 px-2 py-1.5 text-[9px]'
-            : 'top-3 left-14 px-3 py-2 text-[10px]'
+            ? 'left-2 top-2 h-9 w-9 rounded-lg'
+            : 'left-4 top-4 h-10 w-10 rounded-xl'
         }`}
-        title="Zoom out to the current vessel and zone overview"
+        title="Fit overview: show all vessels and zones"
+        aria-label="Fit overview: show all vessels and zones"
       >
-        Fit overview
+        <svg
+          viewBox="0 0 24 24"
+          className="h-4 w-4"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+          <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+          <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+          <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+          <circle cx="12" cy="12" r="2.5" />
+        </svg>
       </button>
 
       {!compact && (
-        <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5 bg-slate-950/90 backdrop-blur-md px-3.5 py-3 rounded-xl border border-slate-700/70 max-w-[240px] pointer-events-none shadow-xl shadow-slate-950/50">
-          <h5 className="text-[10px] font-extrabold uppercase tracking-[0.22em] text-slate-300">
-            Map Legend
-          </h5>
+        <div className="absolute right-5 top-4 z-[1100] w-[205px]">
+          <button
+            type="button"
+            onClick={() => setShowMapLegend((prev) => !prev)}
+            className="mb-2 w-full rounded-xl border border-slate-700/80 bg-slate-950/90 px-3 py-2 text-left text-[9px] font-extrabold uppercase tracking-[0.18em] text-slate-300 shadow-lg shadow-slate-950/40 backdrop-blur-md transition hover:border-cyan-500/60 hover:text-cyan-300"
+          >
+            Map Legend {showMapLegend ? '▲' : '▼'}
+          </button>
 
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shadow shadow-rose-500/50 shrink-0"></span>
-            <span className="text-[11px] text-slate-300">High risk vessel</span>
-          </div>
+          {showMapLegend && (
+            <div className="rounded-xl border border-slate-700/70 bg-slate-950/90 px-3 py-3 shadow-xl shadow-slate-950/50 backdrop-blur-md">
+              <div className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500 shadow shadow-rose-500/50" />
+                  <span className="text-[10px] text-slate-300">High risk vessel</span>
+                </div>
 
-          <div className="flex items-center gap-2 flex-nowrap">
-            <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shadow shadow-orange-500/50 shrink-0"></span>
-            <span className="text-[11px] text-slate-300">Medium risk vessel</span>
-          </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-orange-500 shadow shadow-orange-500/50" />
+                  <span className="text-[10px] text-slate-300">Medium risk vessel</span>
+                </div>
 
-          <div className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 shadow shadow-cyan-500/50 shrink-0"></span>
-            <span className="text-[11px] text-slate-300">Low risk vessel</span>
-          </div>
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 shrink-0 rounded-full bg-cyan-500 shadow shadow-cyan-500/50" />
+                  <span className="text-[10px] text-slate-300">Low risk vessel</span>
+                </div>
 
-          <div className="border-t border-slate-800/80 pt-1 mt-1 flex items-center gap-2">
-            <span className="w-5 h-0.5 border-t border-dashed border-rose-500 shrink-0"></span>
-            <span className="text-[9px] text-slate-400">Restricted zone boundary</span>
-          </div>
+                <div className="flex items-center gap-2 border-t border-slate-800/80 pt-2">
+                  <span className="h-0.5 w-5 shrink-0 border-t border-dashed border-rose-500" />
+                  <span className="text-[8px] text-slate-400">
+                    Restricted boundary
+                  </span>
+                </div>
 
-          <div className="border-t border-slate-800/80 pt-1 mt-1 text-[9px] text-slate-500 leading-snug">
-            Source: <span className="text-slate-400">{sourceLabel}</span>
-          </div>
+                <div className="border-t border-slate-800/80 pt-2 text-[8px] leading-snug text-slate-500">
+                  Source:{' '}
+                  <span className="text-slate-400">
+                    {sourceLabel}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       {!compact && (
-        <div className="absolute bottom-3 left-3 z-[1000] bg-slate-950/90 backdrop-blur-md border border-slate-700/70 rounded-xl px-3 py-2 pointer-events-none shadow-lg shadow-slate-950/40">
-          <span className="text-[9px] font-mono uppercase tracking-[0.18em] text-slate-400">
-            {zones.length} zones • {vessels.length} vessels • animated AIS replay
-          </span>
+        <div className="absolute bottom-4 right-5 z-[1000] rounded-lg border border-slate-800/80 bg-slate-950/80 px-3 py-2 text-[9px] font-mono uppercase tracking-[0.18em] text-slate-500 shadow-lg shadow-slate-950/40 backdrop-blur-md pointer-events-none">
+          <span className="text-emerald-400">●</span>{' '}
+          Map data loaded • {vessels.length} vessels
         </div>
       )}
-
-      <div
-        id="map-container"
-        ref={mapContainerRef}
-        className="absolute inset-0 z-10 focus:outline-none"
-      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   FileText,
   Printer,
@@ -87,18 +87,30 @@ export default function IncidentReportView({
   const [loadingSavedReports, setLoadingSavedReports] = useState(false);
   const [savedReportError, setSavedReportError] = useState('');
   const [activeReportId, setActiveReportId] = useState<string | null>(null);
+  const lastFocusedWorkspaceVesselIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (
       focusedVesselId &&
-      vessels.some((vessel) => vessel.vessel_id === focusedVesselId)
+      vessels.some((vessel) => vessel.vessel_id === focusedVesselId) &&
+      lastFocusedWorkspaceVesselIdRef.current !== focusedVesselId
     ) {
+      lastFocusedWorkspaceVesselIdRef.current = focusedVesselId;
+
       setSelectedVesselId(focusedVesselId);
       setSubTab('dossier');
-      setWorkspaceOpen(false);
+      setWorkspaceOpen(true);
       setGeneratedAiReport(null);
       setActiveReportId(null);
       setAiGenerationError('');
+      setDetailDraftSearch('');
+
+      window.setTimeout(() => {
+        document.getElementById('incident-report-workspace')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'start',
+        });
+      }, 100);
     }
   }, [focusedVesselId, vessels]);
 

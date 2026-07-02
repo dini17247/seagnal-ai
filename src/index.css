@@ -1141,4 +1141,31 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+
+  .seagnal-map .leaflet-top.leaflet-left {
+    top: 70px;
+    left: 16px;
+  }
+
+  .seagnal-map .leaflet-control-zoom {
+    margin: 0 !important;
+    border: 1px solid rgba(51, 65, 85, 0.8) !important;
+    border-radius: 10px !important;
+    overflow: hidden;
+    box-shadow: 0 18px 35px rgba(2, 6, 23, 0.45);
+  }
+
+  .seagnal-map .leaflet-control-zoom a {
+    width: 40px !important;
+    height: 40px !important;
+    line-height: 38px !important;
+    background: rgba(15, 23, 42, 0.95) !important;
+    color: #cbd5e1 !important;
+    border-bottom: 1px solid rgba(51, 65, 85, 0.8) !important;
+  }
+
+  .seagnal-map .leaflet-control-zoom a:hover {
+    background: rgba(15, 23, 42, 1) !important;
+    color: #67e8f9 !important;
+  }
 }

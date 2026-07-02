@@ -338,7 +338,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Vessel name */}
-                          <td className="py-3.5 px-4 align-top min-w-[170px] text-left">
+                          <td className="py-3.5 px-4 align-top min-w-[140px] text-left">
                             {targetVessel ? (
                               <div className="min-w-0 text-left">
                                 <button
@@ -360,7 +360,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Type */}
-                          <td className="py-3.5 px-4 align-top min-w-[150px] text-left font-semibold text-slate-100 leading-tight">
+                          <td className="py-3.5 px-4 align-top min-w-[145px] text-left font-semibold text-slate-100 leading-tight">
                             {alert.alert_type}
                           </td>
 
@@ -370,7 +370,7 @@ export default function AlertManagementView({
                           </td>
 
                           {/* Severity */}
-                          <td className="py-3.5 px-4 align-top">
+                          <td className="py-3.5 px-4 align-center">
                             <span className={`px-2 py-0.5 rounded text-[9px] font-mono uppercase font-bold tracking-wider ${
                               alert.severity === 'High' ? 'bg-rose-500/10 text-rose-450 border border-rose-500/20' :
                               alert.severity === 'Medium' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :

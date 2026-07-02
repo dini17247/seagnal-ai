@@ -1,7 +1,6 @@
 import { useState, useMemo } from 'react';
 import {
   Search,
-  Filter,
   MapPin,
   Anchor,
   ShieldAlert,
@@ -128,7 +127,6 @@ export default function VesselMapView({
       .sort((a, b) => b.risk_score - a.risk_score)
       .slice(0, 12);
   }, [filteredVessels]);
-
 
   const buildBalancedFocusVessels = (items: Vessel[]) => {
     const sortByAlertThenRisk = (a: Vessel, b: Vessel) => {
@@ -401,7 +399,8 @@ export default function VesselMapView({
               })}
             </div>
             <p className="text-[10px] text-slate-500 mt-1.5 leading-relaxed">
-              All risk level always shows every matching vessel on the map. Focus mode only reduces markers when High, Medium, or Low risk is selected.            </p>
+              All risk level always shows every matching vessel on the map. Focus mode only reduces markers when High, Medium, or Low risk is selected.
+            </p>
           </div>
 
           <div>
@@ -565,16 +564,29 @@ export default function VesselMapView({
       </aside>
 
       <section className="relative bg-slate-950/30 border border-slate-800/80 rounded-2xl overflow-hidden h-[calc(100vh-140px)] min-h-[620px] shadow-xl shadow-slate-950/30">
-        <div className="absolute top-4 left-14 z-[1000] bg-slate-950/90 backdrop-blur-md px-4 py-3 rounded-xl border border-slate-700/70 max-w-md pointer-events-none hidden md:block shadow-xl shadow-slate-950/40">
-          <div className="flex items-center gap-2">
-            <Waves className="w-4 h-4 text-cyan-400 animate-pulse" />
-            <h4 className="text-xs font-extrabold text-slate-100 uppercase tracking-[0.22em] leading-none">
-              Guam Demo Maritime Corridor
-            </h4>
+        <div className="absolute left-[72px] right-[250px] top-4 z-[500] hidden md:block pointer-events-none">
+          <div className="inline-flex max-w-full flex-col rounded-xl border border-slate-700/70 bg-slate-950/85 px-4 py-3 shadow-xl shadow-slate-950/40 backdrop-blur-md">
+            <div className="flex items-center gap-2">
+              <Waves className="h-4 w-4 shrink-0 text-cyan-400" />
+              <h4 className="truncate text-[12px] font-extrabold uppercase leading-none tracking-[0.2em] text-slate-100">
+                Guam Maritime Corridor
+              </h4>
+            </div>
+
+            <div className="mt-2 flex items-center gap-3 whitespace-nowrap text-[10px] font-mono text-slate-400">
+              <span>{visibleMapVessels.length}/{filteredVessels.length} vessels</span>
+              <span>•</span>
+              <span>{selectedRisk === 'All' ? 'All risk levels' : `${selectedRisk} risk`}</span>
+              <span>•</span>
+              <span>{visibleMapAlertCount} alerts</span>
+              <span>•</span>
+              <span>{visibleZones.length}/{zones.length} zones</span>
+            </div>
+
+            <p className="mt-1 max-w-full truncate text-[8px] font-mono text-slate-500">
+              Source: {dataSourceLabel}
+            </p>
           </div>
-          <p className="text-[10px] font-mono text-slate-400 mt-1.5 leading-relaxed">
-            {visibleMapVessels.length}/{filteredVessels.length} vessels shown • {selectedRisk === 'All' ? 'all risk levels visible' : `${mapDensity.toLowerCase()} risk view`} • {visibleMapAlertCount} active map alerts • {visibleZones.length}/{zones.length} zones • Source: {dataSourceLabel}
-          </p>
         </div>
 
         <VesselMap

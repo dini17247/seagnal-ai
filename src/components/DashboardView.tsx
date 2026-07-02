@@ -203,7 +203,7 @@ export default function DashboardView({
               Maritime Map Overview
             </h3>
             <p className="text-[11px] text-slate-500 mt-1 font-mono">
-              BigQuery map preview uses priority focus mode: {dashboardMapVessels.length}/{vessels.length} vessels + {dashboardZones.length}/{zones.length} zones • Demo source: {dataSourceLabel}
+              Map preview uses priority focus mode: {dashboardMapVessels.length}/{vessels.length} vessels + {dashboardZones.length}/{zones.length} zones • Demo source: {dataSourceLabel}
             </p>
           </div>
           <button 
